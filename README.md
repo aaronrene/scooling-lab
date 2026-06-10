@@ -15,6 +15,9 @@ This repository starts with no trainer implementation and no private data path. 
 prove that the worker boundary, dependency policy, and license evidence can be audited before any
 training job runs.
 
+Current cross-repo status and coordination rules are documented in
+[`docs/CROSS-REPO-STATUS.md`](docs/CROSS-REPO-STATUS.md).
+
 ## Boundary Rules
 
 - No private Scooling application code.
