@@ -1,0 +1,38 @@
+# .museignore - snapshot exclusion rules for this repository.
+
+[global]
+patterns = [
+    ".DS_Store",
+    "Thumbs.db",
+]
+
+[domain.code]
+patterns = [
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".venv/",
+    "venv/",
+    "dist/",
+    "build/",
+    "*.egg-info/",
+
+    ".env",
+    ".env.*",
+    "*.key",
+    "*.pem",
+    "*.p12",
+
+    "data/",
+    "artifacts/",
+    "models/",
+    "checkpoints/",
+    "*.safetensors",
+    "*.gguf",
+    "*.pt",
+    "*.pth",
+    "*.ckpt",
+]

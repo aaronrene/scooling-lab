@@ -1,0 +1,14 @@
+[project]
+name = "scooling-lab"
+version = "0.1.0"
+description = "Open-source training workspace boundary for Scooling."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Scooling contributors" }]
+dependencies = []
+
+[tool.scooling_lab]
+phase = "T0"
+private_data_allowed = false
+agpl_components_allowed = false
