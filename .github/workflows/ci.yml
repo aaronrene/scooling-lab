@@ -16,6 +16,8 @@ jobs:
           python-version: "3.13"
       - name: Run unittest suite (7 tiers)
         run: PYTHONPATH=src python -m unittest discover -s tests
+      - name: Validate provenance schema guardrails
+        run: PYTHONPATH=src python -m scooling_lab.provenance --self-check
       - name: Verify dependency BOM is current
         run: PYTHONPATH=src python -m scooling_lab.bom --check --output DEPENDENCIES.md
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import time
 import unittest
 
@@ -49,6 +50,37 @@ class ScoolingLabPerformanceTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertLess(elapsed, 30)
+
+    def test_performance_provenance_emission_is_constant_time_bounded(self) -> None:
+        """Repeated provenance emission remains inside a fixed local budget."""
+
+        service = TrainingApiService(TrainingJobStore(queue_limit=1_200))
+
+        start = time.perf_counter()
+        for index in range(1_000):
+            created = service.create_training_job(valid_payload(f"provenance-{index}"))
+            provenance = service.get_provenance(str(created["id"]))
+            self.assertTrue(str(provenance["artifactHash"]))
+        elapsed = time.perf_counter() - start
+
+        self.assertLess(elapsed, 3.0)
+
+    def test_performance_sweep_is_bounded_over_ten_thousand_fixture_jobs(self) -> None:
+        """Retention sweep over N=10k fixture jobs completes inside CI budget."""
+
+        service = TrainingApiService(TrainingJobStore(queue_limit=10_500))
+        payload_policy = {"policyClass": "ephemeral", "ttlSeconds": 60}
+        for index in range(10_000):
+            service.create_training_job(valid_payload(f"sweep-{index}", payload_policy))
+
+        start = time.perf_counter()
+        summary = service.sweep_expired_artifacts(
+            datetime.now(UTC) + timedelta(seconds=120)
+        )
+        elapsed = time.perf_counter() - start
+
+        self.assertEqual(summary["deletedCount"], 10_000)
+        self.assertLess(elapsed, 5.0)
 
 
 if __name__ == "__main__":

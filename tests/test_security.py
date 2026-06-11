@@ -8,8 +8,11 @@ from scooling_lab_helpers import PROJECT_ROOT, valid_payload
 
 from scooling_lab.bom import audit_repository_paths
 from scooling_lab.contracts import TrainingJobRequest
+from scooling_lab.fake_worker import fixture_dataset_bytes
 from scooling_lab.errors import ApiError
 from scooling_lab.license_policy import BomEntry, LicensePolicyError, validate_entry
+from scooling_lab.service import TrainingApiService
+from scooling_lab.store import TrainingJobStore
 
 
 class ScoolingLabSecurityTests(unittest.TestCase):
@@ -63,6 +66,54 @@ class ScoolingLabSecurityTests(unittest.TestCase):
                     evidence="fixture",
                 )
             )
+
+    def test_security_provenance_excludes_synthetic_fixture_text_markers(self) -> None:
+        """Provenance output never contains text from the fixture dataset."""
+
+        marker = "synthetic learner practices"
+        self.assertIn(marker, fixture_dataset_bytes().decode("utf-8"))
+        service = TrainingApiService(TrainingJobStore())
+        created = service.create_training_job(valid_payload("marker-absence"))
+        provenance_text = str(service.get_provenance(str(created["id"])))
+
+        self.assertNotIn(marker, provenance_text)
+        self.assertNotIn("study habits", provenance_text)
+        self.assertNotIn("astronomy facts", provenance_text)
+
+    def test_security_forged_artifact_id_cannot_delete_another_job(self) -> None:
+        """A valid artifact id from one job cannot delete a different job."""
+
+        service = TrainingApiService(TrainingJobStore())
+        first = service.create_training_job(valid_payload("forged-a"))
+        second = service.create_training_job(valid_payload("forged-b"))
+        first_job_id = str(first["id"])
+        second_job_id = str(second["id"])
+        second_artifact_id = str(service.list_artifacts(second_job_id)["artifacts"][0]["id"])
+
+        with self.assertRaises(ApiError):
+            service.delete_artifact(first_job_id, second_artifact_id)
+
+        self.assertEqual(service.get_training_job(first_job_id)["status"], "succeeded")
+        self.assertEqual(service.get_training_job(second_job_id)["status"], "succeeded")
+
+    def test_security_path_traversal_and_injection_ids_are_rejected(self) -> None:
+        """Job and artifact ids reject path traversal and command characters."""
+
+        service = TrainingApiService(TrainingJobStore())
+        created = service.create_training_job(valid_payload("id-injection"))
+        job_id = str(created["id"])
+        artifact_id = str(service.list_artifacts(job_id)["artifacts"][0]["id"])
+
+        attacks = (
+            ("../private", artifact_id),
+            (job_id, "../artifact"),
+            (job_id, f"{artifact_id};rm-rf"),
+            ("https://attacker.invalid/job", artifact_id),
+        )
+        for attack_job_id, attack_artifact_id in attacks:
+            with self.subTest(job_id=attack_job_id, artifact_id=attack_artifact_id):
+                with self.assertRaises(ApiError):
+                    service.delete_artifact(attack_job_id, attack_artifact_id)
         with self.assertRaises(LicensePolicyError):
             validate_entry(
                 BomEntry(

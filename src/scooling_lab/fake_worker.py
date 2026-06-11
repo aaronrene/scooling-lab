@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import importlib.resources
 import json
+from functools import cache
 
 from scooling_lab.contracts import TrainingJobStatus
+from scooling_lab.errors import ApiError, ErrorCode
+from scooling_lab.provenance import ProvenanceRecord, validate_provenance_record
 from scooling_lab.store import ArtifactMetadata, TrainingJobRecord, TrainingJobStore, utc_now_iso
 
 FIXTURE_DATASET_RESOURCE = "synthetic_training_dataset.jsonl"
@@ -31,12 +34,38 @@ def fixture_dataset_hash() -> str:
 def placeholder_artifact_hash(job: TrainingJobRecord, dataset_hash: str) -> str:
     """Return a stable hash for the placeholder artifact metadata."""
 
+    if job.request is None:
+        raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
     payload = json.dumps(
         {
             "datasetHash": dataset_hash,
             "jobId": job.id,
             "modelId": job.request.model_id,
             "placeholder": "scooling-lab-fake-artifact-v1",
+            "trainingParameters": dict(sorted(job.request.training_parameters.items())),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@cache
+def cached_fixture_dataset_hash() -> str:
+    """Return the fixture dataset hash without repeated fixture reads."""
+
+    return fixture_dataset_hash()
+
+
+def training_config_hash(job: TrainingJobRecord) -> str:
+    """Return a content-free hash of the bounded training configuration."""
+
+    if job.request is None:
+        raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
+    payload = json.dumps(
+        {
+            "modelId": job.request.model_id,
+            "retentionPolicy": job.request.retention_policy.to_public_dict(),
             "trainingParameters": dict(sorted(job.request.training_parameters.items())),
         },
         separators=(",", ":"),
@@ -61,9 +90,21 @@ class FakeTrainingWorker:
             return job
         self._store.update_status(job_id, TrainingJobStatus.RUNNING)
         running_job = self._store.get(job_id)
-        dataset_hash = fixture_dataset_hash()
+        if running_job.request is None:
+            raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
+        dataset_hash = cached_fixture_dataset_hash()
         artifact_hash = placeholder_artifact_hash(running_job, dataset_hash)
         artifact_id = f"artifact_{artifact_hash[:24]}"
+        created_at = utc_now_iso()
+        provenance = ProvenanceRecord(
+            artifact_hash=artifact_hash,
+            base_model_id=running_job.request.model_id,
+            created_at=created_at,
+            dataset_hash=dataset_hash,
+            job_id=job_id,
+            training_config_hash=training_config_hash(running_job),
+        )
+        validate_provenance_record(provenance)
         self._store.register_artifact(
             job_id,
             ArtifactMetadata(
@@ -71,7 +112,10 @@ class FakeTrainingWorker:
                 job_id=job_id,
                 dataset_hash=dataset_hash,
                 artifact_hash=artifact_hash,
-                created_at=utc_now_iso(),
+                created_at=created_at,
+                provenance_id=f"provenance_{job_id}",
+                retention_policy=running_job.request.retention_policy,
             ),
+            provenance,
         )
         return self._store.update_status(job_id, TrainingJobStatus.SUCCEEDED)

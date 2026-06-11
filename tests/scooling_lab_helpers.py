@@ -11,10 +11,12 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 
-def valid_payload(suffix: str = "alpha") -> dict[str, object]:
+def valid_payload(
+    suffix: str = "alpha", retention_policy: dict[str, object] | None = None
+) -> dict[str, object]:
     """Return a valid fixture createTrainingJob payload."""
 
-    return {
+    payload: dict[str, object] = {
         "idempotencyKey": f"fixture-{suffix}-0001",
         "datasetId": "fixture:synthetic-tiny-v1",
         "modelId": "fixture-tiny-llm",
@@ -25,3 +27,6 @@ def valid_payload(suffix: str = "alpha") -> dict[str, object]:
             "dryRun": True,
         },
     }
+    if retention_policy is not None:
+        payload["retentionPolicy"] = retention_policy
+    return payload

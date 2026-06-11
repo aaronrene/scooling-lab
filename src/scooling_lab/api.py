@@ -6,6 +6,7 @@ import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import re
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -15,6 +16,8 @@ from scooling_lab.store import TrainingJobStore
 
 
 MAX_BODY_BYTES = 16_384
+JOB_ID_RE = re.compile(r"^job_[a-f0-9]{24}$")
+ARTIFACT_ID_RE = re.compile(r"^artifact_[a-f0-9]{24}$")
 
 
 def parse_job_route(path: str, suffix: str = "") -> str | None:
@@ -29,9 +32,27 @@ def parse_job_route(path: str, suffix: str = "") -> str | None:
         if not remainder.endswith(ending):
             return None
         remainder = remainder[: -len(ending)]
-    if "/" in remainder or not remainder.startswith("job_"):
+    if "/" in remainder or not JOB_ID_RE.fullmatch(remainder):
         return None
     return remainder
+
+
+def parse_artifact_route(path: str) -> tuple[str, str] | None:
+    """Extract safe job and artifact ids from artifact deletion routes."""
+
+    prefix = "/training/jobs/"
+    marker = "/artifacts/"
+    if not path.startswith(prefix) or marker not in path:
+        return None
+    remainder = path.removeprefix(prefix)
+    job_id, separator, artifact_id = remainder.partition(marker)
+    if separator != marker:
+        return None
+    if "/" in artifact_id:
+        return None
+    if not JOB_ID_RE.fullmatch(job_id) or not ARTIFACT_ID_RE.fullmatch(artifact_id):
+        return None
+    return job_id, artifact_id
 
 
 def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
@@ -63,6 +84,10 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
             if artifacts_job_id is not None:
                 self._handle_json(lambda: service.list_artifacts(artifacts_job_id))
                 return
+            provenance_job_id = parse_job_route(path, "provenance")
+            if provenance_job_id is not None:
+                self._handle_json(lambda: service.get_provenance(provenance_job_id))
+                return
             job_id = parse_job_route(path)
             if job_id is not None:
                 self._handle_json(lambda: service.get_training_job(job_id))
@@ -75,8 +100,14 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
             self._send_error(ApiError(ErrorCode.METHOD_NOT_ALLOWED, 405))
 
         def do_DELETE(self) -> None:
-            """Reject unsupported deletion routes with a stable error."""
+            """Handle idempotent deleteArtifact routes."""
 
+            path = urlparse(self.path).path
+            artifact_route = parse_artifact_route(path)
+            if artifact_route is not None:
+                job_id, artifact_id = artifact_route
+                self._handle_json(lambda: service.delete_artifact(job_id, artifact_id))
+                return
             self._send_error(ApiError(ErrorCode.METHOD_NOT_ALLOWED, 405))
 
         def log_message(self, format: str, *args: object) -> None:

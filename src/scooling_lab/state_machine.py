@@ -25,7 +25,8 @@ TRANSITION_TABLE: MappingProxyType[TrainingJobStatus, frozenset[TrainingJobStatu
                     TrainingJobStatus.CANCELLED,
                 }
             ),
-            TrainingJobStatus.SUCCEEDED: frozenset(),
+            TrainingJobStatus.SUCCEEDED: frozenset({TrainingJobStatus.DELETED}),
+            TrainingJobStatus.DELETED: frozenset(),
             TrainingJobStatus.FAILED: frozenset(),
             TrainingJobStatus.CANCELLED: frozenset(),
         }
