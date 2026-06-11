@@ -1,0 +1,4 @@
+# Scooling Lab T0 lockfile.
+# No runtime dependencies are installed or locked in this phase.
+# Future rows must use:
+# name==version # license=MIT source=third_party/name evidence=license-file

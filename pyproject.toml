@@ -1,14 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "scooling-lab"
 version = "0.1.0"
-description = "Open-source training workspace boundary for Scooling."
+description = "Open-source training workspace boundary for Scooling: T0/T2 training API contract and fake worker."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Scooling contributors" }]
 dependencies = []
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+scooling_lab = ["fixtures/*.jsonl"]
+
 [tool.scooling_lab]
 phase = "T0"
 private_data_allowed = false
 agpl_components_allowed = false
+
+[tool.scooling_lab.bom]
+ci_time_budget_seconds = 30
