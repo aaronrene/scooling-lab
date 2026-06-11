@@ -9,7 +9,9 @@ from pathlib import Path
 
 from scooling_lab_helpers import PROJECT_ROOT, valid_payload
 
+from scooling_lab.contracts import TrainingJobStatus
 from scooling_lab.fake_worker import fixture_dataset_hash
+from scooling_lab.provenance import validate_provenance_record
 from scooling_lab.service import TrainingApiService
 from scooling_lab.store import TrainingJobStore
 
@@ -84,6 +86,47 @@ class ScoolingLabDataIntegrityTests(unittest.TestCase):
         for forbidden in forbidden_terms:
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, tombstone_json)
+
+    def test_data_integrity_t4_retry_lineage_and_original_immutability(self) -> None:
+        """Retry provenance is valid while the cancelled original remains unchanged."""
+
+        store = TrainingJobStore()
+        service = TrainingApiService(store, auto_run_worker=False)
+        original = service.create_training_job(valid_payload("di-t4-original"))
+        original_id = str(original["id"])
+        cancelled = service.cancel_training_job(original_id)
+        original_snapshot = json.dumps(
+            service.get_training_job(original_id),
+            sort_keys=True,
+        )
+        retry_service = TrainingApiService(store)
+
+        retried = retry_service.retry_training_job(original_id)
+        provenance = retry_service.get_provenance(str(retried["id"]))
+        original_after_retry = json.dumps(
+            retry_service.get_training_job(original_id),
+            sort_keys=True,
+        )
+
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(original_snapshot, original_after_retry)
+        self.assertEqual(retried["retryOfJobId"], original_id)
+        self.assertEqual(retried["status"], "succeeded")
+        validate_provenance_record(provenance)
+        self.assertEqual(provenance["jobId"], retried["id"])
+        self.assertNotEqual(provenance["jobId"], original_id)
+
+    def test_data_integrity_t4_cancelled_terminal_record_has_no_artifacts(self) -> None:
+        """Cancelled jobs are terminal active-records without artifact metadata."""
+
+        service = TrainingApiService(TrainingJobStore(), auto_run_worker=False)
+        created = service.create_training_job(valid_payload("di-t4-cancelled"))
+        job_id = str(created["id"])
+
+        cancelled = service.cancel_training_job(job_id)
+
+        self.assertEqual(cancelled["status"], TrainingJobStatus.CANCELLED.value)
+        self.assertEqual(service.list_artifacts(job_id)["artifacts"], [])
 
     def test_data_integrity_job_and_artifact_hashes_survive_restart(self) -> None:
         """Job id, dataset hash, and artifact hash are stable after reload."""

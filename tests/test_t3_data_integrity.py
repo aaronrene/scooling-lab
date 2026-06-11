@@ -8,7 +8,11 @@ from datetime import UTC, datetime, timedelta
 
 from scooling_lab_helpers import valid_payload
 
-from scooling_lab.dataset_review import DatasetStore, RejectionReasonCode
+from scooling_lab.dataset_review import (
+    DatasetStore,
+    RejectionReasonCode,
+    default_dataset_shape,
+)
 from scooling_lab.errors import ApiError
 from scooling_lab.provenance import validate_provenance_record
 from scooling_lab.service import TrainingApiService
@@ -93,9 +97,11 @@ class T3DataIntegrityTests(unittest.TestCase):
         """Rejection records expose only enum codes, never caller-supplied text."""
 
         ds_store = DatasetStore()
-        ds_store.register("di-rejection-check")
+        ds_store.register_shape(
+            "di-rejection-check",
+            default_dataset_shape(RejectionReasonCode.SYNTHETIC_LIMIT),
+        )
         ds_store.submit_for_review("di-rejection-check")
-        ds_store.reject("di-rejection-check", RejectionReasonCode.SYNTHETIC_LIMIT)
         public = ds_store.get("di-rejection-check").to_public_dict()
         reason_value = str(public.get("rejectionReasonCode", ""))
         self.assertIn(reason_value, {c.value for c in RejectionReasonCode})

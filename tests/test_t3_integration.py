@@ -7,7 +7,12 @@ from datetime import UTC, datetime, timedelta
 
 from scooling_lab_helpers import valid_payload
 
-from scooling_lab.dataset_review import DatasetStatus, DatasetStore, RejectionReasonCode
+from scooling_lab.dataset_review import (
+    DatasetStatus,
+    DatasetStore,
+    RejectionReasonCode,
+    default_dataset_shape,
+)
 from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.provenance import validate_provenance_record
 from scooling_lab.service import TrainingApiService
@@ -69,7 +74,10 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
         """A rejected dataset is refused at job creation with DATASET_NOT_APPROVED."""
 
         ds_store = DatasetStore()
-        ds_store.register("custom-ds-v3")
+        ds_store.register_shape(
+            "custom-ds-v3",
+            default_dataset_shape(RejectionReasonCode.POLICY_VIOLATION),
+        )
         ds_store.submit_for_review("custom-ds-v3")
         ds_store.reject("custom-ds-v3", RejectionReasonCode.POLICY_VIOLATION)
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
@@ -88,7 +96,10 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
         """Rejection reason code is visible in the dataset record's public dict."""
 
         ds_store = DatasetStore()
-        ds_store.register("reason-ds-v1")
+        ds_store.register_shape(
+            "reason-ds-v1",
+            default_dataset_shape(RejectionReasonCode.SCHEMA_MISMATCH),
+        )
         ds_store.submit_for_review("reason-ds-v1")
         ds_store.reject("reason-ds-v1", RejectionReasonCode.SCHEMA_MISMATCH)
         record = ds_store.get("reason-ds-v1")
@@ -100,7 +111,10 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
         """Public dataset record contains no free-text fields from request payload."""
 
         ds_store = DatasetStore()
-        ds_store.register("clean-ds-v1")
+        ds_store.register_shape(
+            "clean-ds-v1",
+            default_dataset_shape(RejectionReasonCode.FORMAT_INVALID),
+        )
         ds_store.submit_for_review("clean-ds-v1")
         ds_store.reject("clean-ds-v1", RejectionReasonCode.FORMAT_INVALID)
         public_str = str(ds_store.get("clean-ds-v1").to_public_dict())

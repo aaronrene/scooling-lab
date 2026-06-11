@@ -77,7 +77,7 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
     """Create a request handler bound to the supplied service."""
 
     class ScoolingLabRequestHandler(BaseHTTPRequestHandler):
-        """HTTP handler exposing create/get/cancel/list artifact endpoints."""
+        """HTTP handler exposing job, artifact, queue, and dataset endpoints."""
 
         server_version = "ScoolingLab/0.1"
 
@@ -87,6 +87,10 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
             path = urlparse(self.path).path
             if path == "/training/jobs":
                 self._handle_json(lambda: service.create_training_job(self._read_json()))
+                return
+            retry_job_id = parse_job_route(path, "retry")
+            if retry_job_id is not None:
+                self._handle_json(lambda: service.retry_training_job(retry_job_id))
                 return
             cancel_job_id = parse_job_route(path, "cancel")
             if cancel_job_id is not None:

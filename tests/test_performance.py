@@ -82,6 +82,43 @@ class ScoolingLabPerformanceTests(unittest.TestCase):
         self.assertEqual(summary["deletedCount"], 10_000)
         self.assertLess(elapsed, 5.0)
 
+    def test_performance_t4_cancel_retry_and_validation_are_bounded(self) -> None:
+        """Cancel, retry, and dataset shape validation stay inside a local budget."""
+
+        store = TrainingJobStore(queue_limit=1_600, max_concurrent_running=2)
+        service = TrainingApiService(store, auto_run_worker=False)
+        created = [
+            service.create_training_job(valid_payload(f"perf-t4-{index}"))
+            for index in range(1_000)
+        ]
+
+        start = time.perf_counter()
+        for job in created[:300]:
+            service.cancel_training_job(str(job["id"]))
+        for job in created[:300]:
+            retry = service.retry_training_job(str(job["id"]))
+            self.assertEqual(retry["retryOfJobId"], job["id"])
+        for index in range(300):
+            dataset_id = f"perf-dataset-{index}"
+            service.register_dataset(
+                {
+                    "datasetId": dataset_id,
+                    "rowCount": 8,
+                    "declaredSchema": {
+                        "exampleId": "string",
+                        "inputTokenCount": "integer",
+                        "outputTokenCount": "integer",
+                        "split": "string",
+                    },
+                }
+            )
+            decision = service.submit_dataset_for_review(dataset_id)
+            self.assertEqual(decision["status"], "approved")
+        elapsed = time.perf_counter() - start
+
+        self.assertLessEqual(service.get_queue_state()["runningCount"], 2)
+        self.assertLess(elapsed, 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

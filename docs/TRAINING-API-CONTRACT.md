@@ -11,6 +11,7 @@ files.
 - `POST /training/jobs`: `createTrainingJob`.
 - `GET /training/jobs/{job_id}`: `getTrainingJob`.
 - `POST /training/jobs/{job_id}/cancel`: `cancelTrainingJob`.
+- `POST /training/jobs/{job_id}/retry`: `retryTrainingJob`.
 - `GET /training/jobs/{job_id}/artifacts`: `listArtifacts`.
 - `GET /training/jobs/{job_id}/provenance`: `getProvenance`.
 - `DELETE /training/jobs/{job_id}/artifacts/{artifact_id}`: `deleteArtifact`.
@@ -47,8 +48,8 @@ Rejected at schema validation:
 | `cancelled` | terminal; same-state replay is a no-op |
 | `deleted` | terminal tombstone; same-state replay is a no-op |
 
-Cancellation is accepted only from `queued` or `running`. Replaying the same state is idempotent.
-Every other transition returns `INVALID_TRANSITION`.
+Cancellation changes `queued` or `running` jobs to `cancelled`. Cancellation of a terminal job is a
+safe no-op; the original terminal state is preserved.
 
 ## Provenance Records
 
@@ -140,11 +141,38 @@ machine-readable `RejectionReasonCode` enum — no caller-supplied text is ever 
 #### `registerDataset` request
 
 ```json
-{ "datasetId": "fixture:synthetic-tiny-v1" }
+{
+  "datasetId": "fixture:synthetic-tiny-v1",
+  "rowCount": 4,
+  "declaredSchema": {
+    "exampleId": "string",
+    "inputTokenCount": "integer",
+    "outputTokenCount": "integer",
+    "split": "string"
+  }
+}
 ```
 
 - `datasetId` must match the safe-identifier pattern `[A-Za-z0-9._:-]{3,96}`.
+- `rowCount` and `declaredSchema` are optional for the pre-approved fixture compatibility path.
+- When provided, they are content-free synthetic metadata only. No row text, prompt text, document
+  content, file paths, URLs, or callbacks are accepted or returned.
 - Registering an already-approved or already-rejected dataset returns `CONFLICT` (409).
+
+#### `submitDatasetForReview` validation
+
+Submitting a registered dataset runs deterministic bounded validation and immediately records the
+decision:
+
+- Valid shape: `approved`.
+- Row count outside `1..10000`: `rejected` with `SYNTHETIC_LIMIT`.
+- Malformed registration metadata: `rejected` with `FORMAT_INVALID`.
+- Forbidden schema labels such as prompt/content/path/url fields: `rejected` with
+  `POLICY_VIOLATION`.
+- Declared schema that does not exactly match the synthetic schema: `rejected` with
+  `SCHEMA_MISMATCH`.
+
+Only `RejectionReasonCode` enum values are returned. Caller-supplied free text is never echoed.
 
 #### `reviewDataset` request
 
@@ -187,6 +215,23 @@ Rejected datasets also carry `"rejectionReasonCode": "<enum value>"`.
 
 `maxConcurrentRunning` is the FIFO concurrency bound (default 1).  Jobs beyond
 the bound remain `queued` until a running slot is free.
+
+### T4: Cancellation and Retry
+
+`POST /training/jobs/{job_id}/cancel`:
+
+- `queued` or `running` jobs become terminal `cancelled`.
+- Cancelling `succeeded`, `failed`, `cancelled`, or `deleted` is a safe no-op.
+- Cancelling a `running` job promotes the next queued job into `running` when capacity is available.
+
+`POST /training/jobs/{job_id}/retry`:
+
+- Only `failed` and `cancelled` jobs may be retried.
+- A retry creates a fresh job id and includes `retryOfJobId` in the public job response.
+- The original job remains terminal and unchanged.
+- A successful retry writes a fresh, independently valid provenance record whose `jobId` is the new
+  retry job id.
+- Retrying a `succeeded` job returns `INVALID_TRANSITION`.
 
 ### Dataset Approval Gate
 

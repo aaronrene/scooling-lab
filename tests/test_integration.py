@@ -8,6 +8,7 @@ import unittest
 from scooling_lab_helpers import PROJECT_ROOT, valid_payload
 
 from scooling_lab.bom import collect_entries, render_markdown
+from scooling_lab.contracts import TrainingJobRequest, TrainingJobStatus
 from scooling_lab.errors import ApiError
 from scooling_lab.provenance import validate_provenance_record
 from scooling_lab.service import TrainingApiService
@@ -49,6 +50,78 @@ class ScoolingLabIntegrationTests(unittest.TestCase):
         validate_provenance_record(provenance)
         self.assertEqual(provenance["jobId"], job_id)
         self.assertEqual(provenance["baseModelId"], "fixture-tiny-llm")
+
+    def test_integration_t4_submit_validates_and_decides_dataset_status(self) -> None:
+        """Dataset submit deterministically approves valid shapes and rejects invalid ones."""
+
+        service = TrainingApiService(TrainingJobStore())
+        valid = service.register_dataset(
+            {
+                "datasetId": "integration-valid-dataset",
+                "rowCount": 4,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "split": "string",
+                },
+            }
+        )
+        rejected = service.register_dataset(
+            {
+                "datasetId": "integration-reject-dataset",
+                "rowCount": 0,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "split": "string",
+                },
+            }
+        )
+
+        valid_decision = service.submit_dataset_for_review(str(valid["datasetId"]))
+        rejected_decision = service.submit_dataset_for_review(str(rejected["datasetId"]))
+
+        self.assertEqual(valid_decision["status"], "approved")
+        self.assertEqual(rejected_decision["status"], "rejected")
+        self.assertEqual(rejected_decision["rejectionReasonCode"], "SYNTHETIC_LIMIT")
+
+    def test_integration_t4_cancel_running_job_frees_slot_for_next_queued(self) -> None:
+        """Cancelling a running job starts the next queued job without oversubscription."""
+
+        store = TrainingJobStore(queue_limit=4, max_concurrent_running=1)
+        service = TrainingApiService(store, auto_run_worker=False)
+        first = service.create_training_job(valid_payload("cancel-slot-a"))
+        second = service.create_training_job(valid_payload("cancel-slot-b"))
+        store.update_status(str(first["id"]), TrainingJobStatus.RUNNING)
+
+        cancelled = service.cancel_training_job(str(first["id"]))
+        queue_state = service.get_queue_state()
+
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(service.get_training_job(str(second["id"]))["status"], "running")
+        self.assertEqual(queue_state["runningCount"], 1)
+        self.assertEqual(queue_state["queuedCount"], 0)
+
+    def test_integration_t4_failed_job_retries_to_new_successful_provenance(self) -> None:
+        """Retrying a failed job creates a new id and independently valid provenance."""
+
+        store = TrainingJobStore()
+        request = TrainingJobRequest.from_mapping(valid_payload("retry-success"))
+        original = store.create(request)
+        store.update_status(original.id, TrainingJobStatus.FAILED)
+        service = TrainingApiService(store)
+
+        retried = service.retry_training_job(original.id)
+        provenance = service.get_provenance(str(retried["id"]))
+
+        self.assertEqual(retried["status"], "succeeded")
+        self.assertNotEqual(retried["id"], original.id)
+        self.assertEqual(retried["retryOfJobId"], original.id)
+        self.assertEqual(service.get_training_job(original.id)["status"], "failed")
+        validate_provenance_record(provenance)
+        self.assertEqual(provenance["jobId"], retried["id"])
 
     def test_integration_deletion_cascades_store_and_provenance(self) -> None:
         """deleteArtifact removes artifact metadata and provenance together."""

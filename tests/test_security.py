@@ -9,7 +9,7 @@ from scooling_lab_helpers import PROJECT_ROOT, valid_payload
 from scooling_lab.bom import audit_repository_paths
 from scooling_lab.contracts import TrainingJobRequest
 from scooling_lab.fake_worker import fixture_dataset_bytes
-from scooling_lab.errors import ApiError
+from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.license_policy import BomEntry, LicensePolicyError, validate_entry
 from scooling_lab.service import TrainingApiService
 from scooling_lab.store import TrainingJobStore
@@ -124,6 +124,66 @@ class ScoolingLabSecurityTests(unittest.TestCase):
                     evidence="fixture",
                 )
             )
+
+    def test_security_t4_dataset_shape_rejections_are_enum_only(self) -> None:
+        """Unknown and forbidden dataset metadata reject without reflecting fields."""
+
+        service = TrainingApiService(TrainingJobStore())
+        unknown = service.register_dataset(
+            {
+                "datasetId": "security-unknown-shape",
+                "rowCount": 3,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "split": "string",
+                },
+                "extraField": "not-returned",
+            }
+        )
+        forbidden = service.register_dataset(
+            {
+                "datasetId": "security-forbidden-shape",
+                "rowCount": 3,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "promptPayload": "string",
+                    "split": "string",
+                },
+            }
+        )
+
+        unknown_decision = service.submit_dataset_for_review(str(unknown["datasetId"]))
+        forbidden_decision = service.submit_dataset_for_review(str(forbidden["datasetId"]))
+        combined = f"{unknown_decision} {forbidden_decision}"
+
+        self.assertEqual(unknown_decision["status"], "rejected")
+        self.assertEqual(unknown_decision["rejectionReasonCode"], "FORMAT_INVALID")
+        self.assertEqual(forbidden_decision["status"], "rejected")
+        self.assertEqual(forbidden_decision["rejectionReasonCode"], "POLICY_VIOLATION")
+        self.assertNotIn("extraField", combined)
+        self.assertNotIn("not-returned", combined)
+        self.assertNotIn("promptPayload", combined)
+
+    def test_security_t4_cancel_and_retry_reject_injection_shaped_ids(self) -> None:
+        """Cancel and retry validate job ids before any store lookup."""
+
+        service = TrainingApiService(TrainingJobStore(), auto_run_worker=False)
+        created = service.create_training_job(valid_payload("security-t4-id"))
+        cancelled = service.cancel_training_job(str(created["id"]))
+        self.assertEqual(cancelled["status"], "cancelled")
+
+        for unsafe_job_id in ("../job-id", "job_" + "a" * 24 + ";x"):
+            with self.subTest(unsafe_job_id=unsafe_job_id):
+                with self.assertRaises(ApiError) as cancel_error:
+                    service.cancel_training_job(unsafe_job_id)
+                self.assertEqual(cancel_error.exception.code, ErrorCode.VALIDATION_ERROR)
+                with self.assertRaises(ApiError) as retry_error:
+                    service.retry_training_job(unsafe_job_id)
+                self.assertEqual(retry_error.exception.code, ErrorCode.VALIDATION_ERROR)
 
 
 if __name__ == "__main__":

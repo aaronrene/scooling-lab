@@ -49,6 +49,11 @@ def transition(
 def cancel(current: TrainingJobStatus) -> TrainingJobStatus:
     """Cancel a queued or running job; terminal replay is idempotent."""
 
-    if current == TrainingJobStatus.CANCELLED:
+    if current in {
+        TrainingJobStatus.SUCCEEDED,
+        TrainingJobStatus.FAILED,
+        TrainingJobStatus.CANCELLED,
+        TrainingJobStatus.DELETED,
+    }:
         return current
     return transition(current, TrainingJobStatus.CANCELLED)

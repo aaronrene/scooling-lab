@@ -24,6 +24,34 @@ DATASET_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{3,96}$")
 FORBIDDEN_STRING_RE = re.compile(
     r"(?i)(https?://|file://|ssh://|[;&|`$<>]|\.\./|/\w|[A-Za-z]:\\)"
 )
+FORBIDDEN_FIELD_TERMS: tuple[str, ...] = (
+    "content",
+    "credential",
+    "document",
+    "email",
+    "file",
+    "instruction",
+    "message",
+    "password",
+    "path",
+    "prompt",
+    "secret",
+    "text",
+    "url",
+)
+SYNTHETIC_ROW_COUNT_MIN = 1
+SYNTHETIC_ROW_COUNT_MAX = 10_000
+SYNTHETIC_DATASET_SCHEMA: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "exampleId": "string",
+        "inputTokenCount": "integer",
+        "outputTokenCount": "integer",
+        "split": "string",
+    }
+)
+ALLOWED_DATASET_REGISTRATION_KEYS: frozenset[str] = frozenset(
+    {"datasetId", "rowCount", "declaredSchema"}
+)
 
 # The fixture dataset is pre-approved so existing tests require no changes.
 FIXTURE_APPROVED_DATASET_IDS: frozenset[str] = frozenset(
@@ -52,6 +80,15 @@ class RejectionReasonCode(str, Enum):
     POLICY_VIOLATION = "POLICY_VIOLATION"
     SCHEMA_MISMATCH = "SCHEMA_MISMATCH"
     DUPLICATE_SUBMISSION = "DUPLICATE_SUBMISSION"
+
+
+@dataclass(frozen=True)
+class SyntheticDatasetShape:
+    """Content-free metadata used to validate a synthetic dataset submission."""
+
+    row_count: int
+    declared_schema: Mapping[str, str]
+    parse_reason: RejectionReasonCode | None = None
 
 
 _DATASET_TRANSITIONS: MappingProxyType[
@@ -104,6 +141,85 @@ def require_rejection_reason(value: object) -> RejectionReasonCode:
         raise ApiError(ErrorCode.VALIDATION_ERROR, 400) from exc
 
 
+def dataset_shape_from_registration(
+    payload: Mapping[str, object],
+) -> tuple[str, SyntheticDatasetShape]:
+    """Validate dataset registration metadata without storing content.
+
+    The dataset id is still schema-validated as a request contract.  The optional
+    synthetic shape metadata is stored only as bounded counts and schema labels;
+    submit-time validation converts malformed or policy-unsafe shapes into
+    ``RejectionReasonCode`` values without echoing caller-provided text.
+    """
+
+    dataset_id = require_dataset_id(payload.get("datasetId"))
+    unknown_keys = set(payload).difference(ALLOWED_DATASET_REGISTRATION_KEYS)
+    if unknown_keys:
+        return dataset_id, default_dataset_shape(RejectionReasonCode.FORMAT_INVALID)
+
+    has_shape_metadata = "rowCount" in payload or "declaredSchema" in payload
+    if not has_shape_metadata:
+        return dataset_id, default_dataset_shape()
+
+    row_count = payload.get("rowCount")
+    declared_schema = payload.get("declaredSchema")
+    if (
+        not isinstance(row_count, int)
+        or isinstance(row_count, bool)
+        or not isinstance(declared_schema, Mapping)
+    ):
+        return dataset_id, default_dataset_shape(RejectionReasonCode.FORMAT_INVALID)
+
+    parsed_schema: dict[str, str] = {}
+    for field_name, field_type in declared_schema.items():
+        if not isinstance(field_name, str) or not isinstance(field_type, str):
+            return dataset_id, default_dataset_shape(RejectionReasonCode.FORMAT_INVALID)
+        parsed_schema[field_name] = field_type
+
+    return dataset_id, SyntheticDatasetShape(
+        row_count=row_count,
+        declared_schema=MappingProxyType(parsed_schema),
+    )
+
+
+def default_dataset_shape(
+    parse_reason: RejectionReasonCode | None = None,
+) -> SyntheticDatasetShape:
+    """Return the default valid synthetic shape used by compatibility fixtures."""
+
+    return SyntheticDatasetShape(
+        row_count=SYNTHETIC_ROW_COUNT_MIN,
+        declared_schema=SYNTHETIC_DATASET_SCHEMA,
+        parse_reason=parse_reason,
+    )
+
+
+def validate_synthetic_dataset_shape(
+    shape: SyntheticDatasetShape,
+) -> RejectionReasonCode | None:
+    """Return a bounded rejection code for invalid synthetic dataset metadata."""
+
+    if shape.parse_reason is not None:
+        return shape.parse_reason
+    if not SYNTHETIC_ROW_COUNT_MIN <= shape.row_count <= SYNTHETIC_ROW_COUNT_MAX:
+        return RejectionReasonCode.SYNTHETIC_LIMIT
+    for field_name, field_type in shape.declared_schema.items():
+        if has_forbidden_field_term(field_name) or has_forbidden_field_term(field_type):
+            return RejectionReasonCode.POLICY_VIOLATION
+    if dict(shape.declared_schema) != dict(SYNTHETIC_DATASET_SCHEMA):
+        return RejectionReasonCode.SCHEMA_MISMATCH
+    return None
+
+
+def has_forbidden_field_term(value: str) -> bool:
+    """Return true when a schema label carries unsafe or content-bearing terms."""
+
+    lowered = value.lower()
+    return FORBIDDEN_STRING_RE.search(value) is not None or any(
+        term in lowered for term in FORBIDDEN_FIELD_TERMS
+    )
+
+
 def _utc_now_iso() -> str:
     """Return a UTC timestamp formatted for public metadata."""
 
@@ -121,6 +237,7 @@ class DatasetRecord:
     registered_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
     rejection_reason: RejectionReasonCode | None = None
+    synthetic_shape: SyntheticDatasetShape = field(default_factory=default_dataset_shape)
 
     def to_public_dict(self) -> dict[str, object]:
         """Serialize the safe dataset status shape for API responses."""
@@ -167,18 +284,28 @@ class DatasetStore:
         """
 
         require_dataset_id(dataset_id)
+        return self.register_shape(dataset_id, default_dataset_shape())
+
+    def register_shape(
+        self, dataset_id: str, synthetic_shape: SyntheticDatasetShape
+    ) -> DatasetRecord:
+        """Register a dataset with bounded synthetic validation metadata."""
+
         with self._lock:
             existing = self._datasets.get(dataset_id)
             if existing is not None:
                 if existing.status in {DatasetStatus.APPROVED, DatasetStatus.REJECTED}:
                     raise ApiError(ErrorCode.CONFLICT, 409)
                 return existing
-            record = DatasetRecord(dataset_id=dataset_id)
+            record = DatasetRecord(
+                dataset_id=dataset_id,
+                synthetic_shape=synthetic_shape,
+            )
             self._datasets[dataset_id] = record
             return record
 
     def submit_for_review(self, dataset_id: str) -> DatasetRecord:
-        """Advance a registered dataset to pending_review."""
+        """Validate a registered dataset and record the deterministic decision."""
 
         require_dataset_id(dataset_id)
         with self._lock:
@@ -186,6 +313,13 @@ class DatasetStore:
             record.status = dataset_transition(
                 record.status, DatasetStatus.PENDING_REVIEW
             )
+            rejection_reason = validate_synthetic_dataset_shape(record.synthetic_shape)
+            if rejection_reason is None:
+                record.status = dataset_transition(record.status, DatasetStatus.APPROVED)
+                record.rejection_reason = None
+            else:
+                record.status = dataset_transition(record.status, DatasetStatus.REJECTED)
+                record.rejection_reason = rejection_reason
             record.updated_at = _utc_now_iso()
             return record
 
@@ -207,6 +341,8 @@ class DatasetStore:
         require_dataset_id(dataset_id)
         with self._lock:
             record = self._get_locked(dataset_id)
+            if record.status == DatasetStatus.REJECTED:
+                return record
             record.status = dataset_transition(record.status, DatasetStatus.REJECTED)
             record.rejection_reason = reason_code
             record.updated_at = _utc_now_iso()

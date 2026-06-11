@@ -14,12 +14,12 @@ from scooling_lab.contracts import (
 )
 from scooling_lab.dataset_review import (
     DatasetStore,
-    RejectionReasonCode,
+    dataset_shape_from_registration,
     validate_review_request,
 )
 from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.fake_worker import FakeTrainingWorker
-from scooling_lab.store import TrainingJobStore
+from scooling_lab.store import TrainingJobRecord, TrainingJobStore
 
 
 class TrainingApiService:
@@ -54,10 +54,8 @@ class TrainingApiService:
     def register_dataset(self, payload: dict[str, object]) -> dict[str, object]:
         """Register a dataset for the review lifecycle."""
 
-        dataset_id_raw = payload.get("datasetId")
-        if not isinstance(dataset_id_raw, str):
-            raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
-        record = self._dataset_store.register(dataset_id_raw)
+        dataset_id, synthetic_shape = dataset_shape_from_registration(payload)
+        record = self._dataset_store.register_shape(dataset_id, synthetic_shape)
         return record.to_public_dict()
 
     def submit_dataset_for_review(self, dataset_id: str) -> dict[str, object]:
@@ -109,17 +107,7 @@ class TrainingApiService:
         if not self._dataset_store.is_approved(request.dataset_id):
             raise ApiError(ErrorCode.DATASET_NOT_APPROVED, 403)
         job = self._store.create(request)
-        if self._auto_run_worker and job.status in {
-            TrainingJobStatus.QUEUED,
-            TrainingJobStatus.RUNNING,
-        }:
-            acquired = self._run_semaphore.acquire(blocking=True, timeout=10)
-            try:
-                if acquired:
-                    job = self._worker.run_job(job.id)
-            finally:
-                if acquired:
-                    self._run_semaphore.release()
+        job = self._run_if_configured(job.id)
         return job.to_public_dict()
 
     def get_training_job(self, job_id: str) -> dict[str, object]:
@@ -132,9 +120,15 @@ class TrainingApiService:
         """Cancel a queued or running training job."""
 
         require_job_id(job_id)
-        return self._store.update_status(
-            job_id, TrainingJobStatus.CANCELLED
-        ).to_public_dict()
+        return self._store.cancel(job_id).to_public_dict()
+
+    def retry_training_job(self, job_id: str) -> dict[str, object]:
+        """Retry a failed or cancelled job with a fresh lineage-linked job id."""
+
+        require_job_id(job_id)
+        retry = self._store.retry(job_id)
+        retry = self._run_if_configured(retry.id)
+        return retry.to_public_dict()
 
     def list_artifacts(self, job_id: str) -> dict[str, object]:
         """Return placeholder artifacts registered for one job."""
@@ -171,3 +165,23 @@ class TrainingApiService:
         """Verify deleted artifact hashes are absent from all store outputs."""
 
         return self._store.verify_hash_absence(hash_values)
+
+    def _run_if_configured(self, job_id: str) -> TrainingJobRecord:
+        """Run a queued/running job through the fake worker when configured."""
+
+        if not self._auto_run_worker:
+            return self._store.get(job_id)
+        job = self._store.get(job_id)
+        if job.status not in {
+            TrainingJobStatus.QUEUED,
+            TrainingJobStatus.RUNNING,
+        }:
+            return job
+        acquired = self._run_semaphore.acquire(blocking=True, timeout=10)
+        try:
+            if acquired:
+                return self._worker.run_job(job_id)
+            return self._store.get(job_id)
+        finally:
+            if acquired:
+                self._run_semaphore.release()

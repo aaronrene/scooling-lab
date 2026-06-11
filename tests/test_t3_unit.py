@@ -12,6 +12,7 @@ from scooling_lab.dataset_review import (
     DatasetStore,
     RejectionReasonCode,
     dataset_transition,
+    default_dataset_shape,
     require_dataset_id,
     validate_review_request,
 )
@@ -209,20 +210,24 @@ class T3UnitDatasetStoreTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, ErrorCode.CONFLICT)
 
     def test_unit_t3_full_approval_lifecycle(self) -> None:
-        """registered → pending_review → approved follows the state machine."""
+        """Submit-time validation approves the default synthetic shape."""
 
         store = DatasetStore()
         store.register("lifecycle-ds-v1")
-        store.submit_for_review("lifecycle-ds-v1")
+        submitted = store.submit_for_review("lifecycle-ds-v1")
+        self.assertEqual(submitted.status, DatasetStatus.APPROVED)
         record = store.approve("lifecycle-ds-v1")
         self.assertEqual(record.status, DatasetStatus.APPROVED)
         self.assertTrue(store.is_approved("lifecycle-ds-v1"))
 
     def test_unit_t3_full_rejection_lifecycle(self) -> None:
-        """registered → pending_review → rejected carries the reason code."""
+        """Submit-time validation rejects invalid metadata with the reason code."""
 
         store = DatasetStore()
-        store.register("reject-ds-v1")
+        store.register_shape(
+            "reject-ds-v1",
+            default_dataset_shape(RejectionReasonCode.FORMAT_INVALID),
+        )
         store.submit_for_review("reject-ds-v1")
         record = store.reject("reject-ds-v1", RejectionReasonCode.FORMAT_INVALID)
         self.assertEqual(record.status, DatasetStatus.REJECTED)
