@@ -17,6 +17,7 @@ class ErrorCode(str, Enum):
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     CONFLICT = "CONFLICT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    DATASET_NOT_APPROVED = "DATASET_NOT_APPROVED"
 
 
 SAFE_ERROR_MESSAGES: dict[ErrorCode, str] = {
@@ -28,6 +29,7 @@ SAFE_ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.METHOD_NOT_ALLOWED: "The HTTP method is not allowed for this route.",
     ErrorCode.CONFLICT: "The request conflicts with an existing training job.",
     ErrorCode.INTERNAL_ERROR: "The training service could not complete the request.",
+    ErrorCode.DATASET_NOT_APPROVED: "The dataset has not been approved for job submission.",
 }
 
 

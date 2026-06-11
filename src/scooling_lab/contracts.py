@@ -98,8 +98,6 @@ class TrainingJobRequest:
             payload.get("trainingParameters", {})
         )
 
-        if dataset_id not in ALLOWED_DATASET_IDS:
-            raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
         if model_id not in ALLOWED_MODEL_IDS:
             raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
 
