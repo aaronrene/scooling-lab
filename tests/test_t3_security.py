@@ -9,6 +9,7 @@ from scooling_lab_helpers import valid_payload
 from scooling_lab.dataset_review import (
     DatasetStore,
     RejectionReasonCode,
+    default_dataset_shape,
     require_dataset_id,
     validate_review_request,
 )
@@ -40,7 +41,10 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
         """A rejected dataset cannot slip into job creation."""
 
         ds_store = DatasetStore()
-        ds_store.register("sec-rejected-ds")
+        ds_store.register_shape(
+            "sec-rejected-ds",
+            default_dataset_shape(RejectionReasonCode.POLICY_VIOLATION),
+        )
         ds_store.submit_for_review("sec-rejected-ds")
         ds_store.reject("sec-rejected-ds", RejectionReasonCode.POLICY_VIOLATION)
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
@@ -93,7 +97,10 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
         """Rejection records never echo caller-supplied text."""
 
         ds_store = DatasetStore()
-        ds_store.register("sec-reflect-check")
+        ds_store.register_shape(
+            "sec-reflect-check",
+            default_dataset_shape(RejectionReasonCode.SCHEMA_MISMATCH),
+        )
         ds_store.submit_for_review("sec-reflect-check")
         ds_store.reject("sec-reflect-check", RejectionReasonCode.SCHEMA_MISMATCH)
         public_str = str(ds_store.get("sec-reflect-check").to_public_dict())
@@ -150,12 +157,11 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
         self.assertNotIn("echo-test-ds", raised.exception.message)
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
 
-    def test_security_t3_pending_review_dataset_id_refused(self) -> None:
-        """A dataset in pending_review state (not yet decided) blocks job creation."""
+    def test_security_t3_registered_dataset_id_refused_before_submission(self) -> None:
+        """A registered dataset that has not been submitted blocks job creation."""
 
         ds_store = DatasetStore()
         ds_store.register("pending-review-ds")
-        ds_store.submit_for_review("pending-review-ds")
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
         with self.assertRaises(ApiError) as raised:
             service.create_training_job(

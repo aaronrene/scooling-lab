@@ -7,7 +7,11 @@ import unittest
 
 from scooling_lab_helpers import valid_payload
 
-from scooling_lab.dataset_review import DatasetStore, RejectionReasonCode
+from scooling_lab.dataset_review import (
+    DatasetStore,
+    RejectionReasonCode,
+    default_dataset_shape,
+)
 from scooling_lab.service import TrainingApiService
 from scooling_lab.store import TrainingJobStore
 
@@ -63,7 +67,10 @@ class T3PerformanceTests(unittest.TestCase):
         """1 000 is_approved calls on a rejected dataset finish under 0.2 seconds."""
 
         ds_store = DatasetStore()
-        ds_store.register("perf-rejected-ds")
+        ds_store.register_shape(
+            "perf-rejected-ds",
+            default_dataset_shape(RejectionReasonCode.POLICY_VIOLATION),
+        )
         ds_store.submit_for_review("perf-rejected-ds")
         ds_store.reject("perf-rejected-ds", RejectionReasonCode.POLICY_VIOLATION)
 

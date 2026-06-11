@@ -90,7 +90,12 @@ class FakeTrainingWorker:
         """
 
         job = self._store.get(job_id)
-        if job.status == TrainingJobStatus.SUCCEEDED:
+        if job.status in {
+            TrainingJobStatus.SUCCEEDED,
+            TrainingJobStatus.FAILED,
+            TrainingJobStatus.CANCELLED,
+            TrainingJobStatus.DELETED,
+        }:
             return job
         self._store.update_status(job_id, TrainingJobStatus.RUNNING)
         running_job = self._store.get(job_id)

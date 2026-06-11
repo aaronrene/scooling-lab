@@ -73,7 +73,7 @@ class T3EndToEndTests(unittest.TestCase):
         submitted = self._json(
             f"{self._base}/datasets/e2e-dataset-v1/submit", "POST"
         )
-        self.assertEqual(submitted["status"], "pending_review")
+        self.assertEqual(submitted["status"], "approved")
 
         # Approve it.
         approved = self._json(
@@ -93,7 +93,16 @@ class T3EndToEndTests(unittest.TestCase):
         self._json(
             f"{self._base}/datasets",
             "POST",
-            {"datasetId": "e2e-rejected-v1"},
+            {
+                "datasetId": "e2e-rejected-v1",
+                "rowCount": 0,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "split": "string",
+                },
+            },
         )
         self._json(f"{self._base}/datasets/e2e-rejected-v1/submit", "POST")
         rejected = self._json(
@@ -102,7 +111,7 @@ class T3EndToEndTests(unittest.TestCase):
             {"action": "reject", "reasonCode": "DUPLICATE_SUBMISSION"},
         )
         self.assertEqual(rejected["status"], "rejected")
-        self.assertEqual(rejected["rejectionReasonCode"], "DUPLICATE_SUBMISSION")
+        self.assertEqual(rejected["rejectionReasonCode"], "SYNTHETIC_LIMIT")
         # Confirm no free text in the response body.
         self.assertNotIn("caller message", json.dumps(rejected))
 

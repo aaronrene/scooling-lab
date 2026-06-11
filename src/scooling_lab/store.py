@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from dataclasses import dataclass, field
@@ -23,7 +24,7 @@ from scooling_lab.retention import (
     is_expired,
     retention_policy_from_mapping,
 )
-from scooling_lab.state_machine import transition
+from scooling_lab.state_machine import cancel, transition
 
 
 def utc_now_iso() -> str:
@@ -107,6 +108,7 @@ class TrainingJobRecord:
     artifacts: list[ArtifactMetadata] = field(default_factory=list)
     provenance: ProvenanceRecord | None = None
     deleted_at: str | None = None
+    retry_of_job_id: str | None = None
 
     def to_public_dict(self) -> dict[str, object]:
         """Serialize the safe job status shape for API responses."""
@@ -120,16 +122,21 @@ class TrainingJobRecord:
             }
             if self.deleted_at is not None:
                 payload["deletedAt"] = self.deleted_at
+            if self.retry_of_job_id is not None:
+                payload["retryOfJobId"] = self.retry_of_job_id
             return payload
         if self.request is None:
             raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
-        return {
+        payload = {
             "id": self.id,
             "status": self.status.value,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
             "request": self.request.to_public_dict(),
         }
+        if self.retry_of_job_id is not None:
+            payload["retryOfJobId"] = self.retry_of_job_id
+        return payload
 
     def to_persisted_dict(self) -> dict[str, object]:
         """Serialize the full non-secret record to the server-controlled store."""
@@ -145,10 +152,12 @@ class TrainingJobRecord:
                 payload["deletedAt"] = self.deleted_at
             if self.provenance is not None:
                 payload["provenance"] = self.provenance.to_dict()
+            if self.retry_of_job_id is not None:
+                payload["retryOfJobId"] = self.retry_of_job_id
             return payload
         if self.request is None:
             raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
-        return {
+        payload = {
             "id": self.id,
             "status": self.status.value,
             "createdAt": self.created_at,
@@ -166,6 +175,9 @@ class TrainingJobRecord:
             if self.provenance is not None
             else None,
         }
+        if self.retry_of_job_id is not None:
+            payload["retryOfJobId"] = self.retry_of_job_id
+        return payload
 
     @classmethod
     def from_persisted_dict(cls, payload: dict[str, object]) -> "TrainingJobRecord":
@@ -188,6 +200,9 @@ class TrainingJobRecord:
                 updated_at=str(payload["updatedAt"]),
                 deleted_at=str(deleted_at) if deleted_at is not None else None,
                 provenance=provenance,
+                retry_of_job_id=str(payload["retryOfJobId"])
+                if payload.get("retryOfJobId") is not None
+                else None,
             )
         request_payload = payload["request"]
         if not isinstance(request_payload, dict):
@@ -213,6 +228,9 @@ class TrainingJobRecord:
                 if isinstance(artifact, dict)
             ],
             provenance=provenance,
+            retry_of_job_id=str(payload["retryOfJobId"])
+            if payload.get("retryOfJobId") is not None
+            else None,
         )
 
 
@@ -255,6 +273,46 @@ class TrainingJobStore:
             self._save()
             return record
 
+    def cancel(self, job_id: str) -> TrainingJobRecord:
+        """Cancel queued/running jobs and promote queued work after running cancel."""
+
+        with self._lock:
+            record = self.get(job_id)
+            previous_status = record.status
+            next_status = cancel(record.status)
+            if next_status != record.status:
+                record.status = next_status
+                record.updated_at = utc_now_iso()
+                if previous_status == TrainingJobStatus.RUNNING:
+                    self._promote_queued_locked()
+                self._save()
+            return record
+
+    def retry(self, job_id: str) -> TrainingJobRecord:
+        """Create a new queued job linked to a failed or cancelled original."""
+
+        with self._lock:
+            original = self.get(job_id)
+            if original.status not in {
+                TrainingJobStatus.FAILED,
+                TrainingJobStatus.CANCELLED,
+            }:
+                raise ApiError(ErrorCode.INVALID_TRANSITION, 409)
+            if original.request is None:
+                raise ApiError(ErrorCode.INVALID_TRANSITION, 409)
+            if self.active_count() >= self._queue_limit:
+                raise ApiError(ErrorCode.QUEUE_LIMIT_EXCEEDED, 429)
+
+            retry_id = self._next_retry_id_locked(original.id)
+            record = TrainingJobRecord(
+                id=retry_id,
+                request=original.request,
+                retry_of_job_id=original.id,
+            )
+            self._jobs[retry_id] = record
+            self._save()
+            return record
+
     def get(self, job_id: str) -> TrainingJobRecord:
         """Return one job or raise a safe not-found error."""
 
@@ -273,8 +331,14 @@ class TrainingJobStore:
             record = self.get(job_id)
             next_status = transition(record.status, target_status)
             if next_status != record.status:
+                previous_status = record.status
                 record.status = next_status
                 record.updated_at = utc_now_iso()
+                if (
+                    previous_status == TrainingJobStatus.RUNNING
+                    and record.status != TrainingJobStatus.RUNNING
+                ):
+                    self._promote_queued_locked()
                 self._save()
             return record
 
@@ -420,6 +484,32 @@ class TrainingJobStore:
         """Return True when the running-job slot is available."""
 
         return self.running_count() < self._max_concurrent_running
+
+    def _promote_queued_locked(self) -> None:
+        while self.running_count() < self._max_concurrent_running:
+            queued = next(
+                (
+                    record
+                    for record in self._jobs.values()
+                    if record.status == TrainingJobStatus.QUEUED
+                ),
+                None,
+            )
+            if queued is None:
+                return
+            queued.status = transition(queued.status, TrainingJobStatus.RUNNING)
+            queued.updated_at = utc_now_iso()
+
+    def _next_retry_id_locked(self, original_job_id: str) -> str:
+        attempt = 1
+        while True:
+            digest = hashlib.sha256(
+                f"{original_job_id}:retry:{attempt}".encode("utf-8")
+            ).hexdigest()[:24]
+            retry_id = f"job_{digest}"
+            if retry_id not in self._jobs:
+                return retry_id
+            attempt += 1
 
     def queue_state(self) -> dict[str, object]:
         """Return a content-free snapshot of the job queue state."""

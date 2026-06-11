@@ -8,6 +8,7 @@ import unittest
 
 from scooling_lab_helpers import valid_payload
 
+from scooling_lab.contracts import TrainingJobStatus
 from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.service import TrainingApiService
 from scooling_lab.store import TrainingJobStore
@@ -95,6 +96,38 @@ class ScoolingLabStressTests(unittest.TestCase):
         self.assertIn("True", results)
         self.assertEqual(service.get_training_job(job_id)["status"], "deleted")
         self.assertEqual(service.list_artifacts(job_id)["artifacts"], [])
+
+    def test_stress_t4_many_cancels_and_retries_preserve_slot_accounting(self) -> None:
+        """Concurrent cancel/retry waves never exceed the running concurrency bound."""
+
+        store = TrainingJobStore(queue_limit=160, max_concurrent_running=3)
+        service = TrainingApiService(store, auto_run_worker=False)
+        created = [
+            service.create_training_job(valid_payload(f"stress-t4-{index}"))
+            for index in range(24)
+        ]
+        running_ids = [str(job["id"]) for job in created[:3]]
+        for job_id in running_ids:
+            store.update_status(job_id, TrainingJobStatus.RUNNING)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+            cancelled = list(executor.map(service.cancel_training_job, running_ids))
+            retried = list(
+                executor.map(
+                    service.retry_training_job,
+                    [str(job["id"]) for job in cancelled],
+                )
+            )
+
+        queue_state = service.get_queue_state()
+        self.assertEqual([job["status"] for job in cancelled], ["cancelled"] * 3)
+        self.assertEqual([job["status"] for job in retried], ["queued"] * 3)
+        self.assertLessEqual(queue_state["runningCount"], 3)
+        self.assertEqual(queue_state["runningCount"], 3)
+        self.assertEqual(
+            queue_state["activeCount"],
+            queue_state["queuedCount"] + queue_state["runningCount"],
+        )
 
 
 if __name__ == "__main__":

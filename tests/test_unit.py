@@ -8,6 +8,11 @@ import unittest
 from scooling_lab_helpers import valid_payload
 
 from scooling_lab.contracts import TrainingJobRequest, TrainingJobStatus
+from scooling_lab.dataset_review import (
+    RejectionReasonCode,
+    dataset_shape_from_registration,
+    validate_synthetic_dataset_shape,
+)
 from scooling_lab.errors import ApiError, ErrorCode, error_payload
 from scooling_lab.license_policy import BomEntry, LicensePolicyError, validate_entry
 from scooling_lab.provenance import ProvenanceRecord, validate_provenance_record
@@ -18,7 +23,7 @@ from scooling_lab.retention import (
     retention_policy_from_mapping,
 )
 from scooling_lab.service import TrainingApiService
-from scooling_lab.state_machine import transition
+from scooling_lab.state_machine import cancel, transition
 from scooling_lab.store import TrainingJobStore
 
 
@@ -47,6 +52,85 @@ class ScoolingLabUnitTests(unittest.TestCase):
         with self.assertRaises(ApiError) as raised:
             transition(TrainingJobStatus.QUEUED, TrainingJobStatus.SUCCEEDED)
         self.assertEqual(raised.exception.code, ErrorCode.INVALID_TRANSITION)
+
+    def test_unit_t4_cancel_transitions_and_terminal_noops(self) -> None:
+        """Cancellation changes active states and leaves terminal states unchanged."""
+
+        self.assertEqual(cancel(TrainingJobStatus.QUEUED), TrainingJobStatus.CANCELLED)
+        self.assertEqual(cancel(TrainingJobStatus.RUNNING), TrainingJobStatus.CANCELLED)
+        for terminal in (
+            TrainingJobStatus.SUCCEEDED,
+            TrainingJobStatus.FAILED,
+            TrainingJobStatus.CANCELLED,
+            TrainingJobStatus.DELETED,
+        ):
+            with self.subTest(terminal=terminal):
+                self.assertEqual(cancel(terminal), terminal)
+
+    def test_unit_t4_retry_state_transitions_refuse_invalid_originals(self) -> None:
+        """Only failed or cancelled jobs can produce a fresh retry job."""
+
+        service = TrainingApiService(TrainingJobStore(), auto_run_worker=False)
+        queued = service.create_training_job(valid_payload("retry-invalid-queued"))
+        with self.assertRaises(ApiError) as queued_retry:
+            service.retry_training_job(str(queued["id"]))
+        self.assertEqual(queued_retry.exception.code, ErrorCode.INVALID_TRANSITION)
+
+        succeeded_service = TrainingApiService(TrainingJobStore())
+        succeeded = succeeded_service.create_training_job(valid_payload("retry-invalid-done"))
+        with self.assertRaises(ApiError) as succeeded_retry:
+            succeeded_service.retry_training_job(str(succeeded["id"]))
+        self.assertEqual(succeeded_retry.exception.code, ErrorCode.INVALID_TRANSITION)
+
+    def test_unit_t4_dataset_validation_maps_shapes_to_reason_codes(self) -> None:
+        """Synthetic dataset validation returns enum reasons for invalid shapes."""
+
+        _, valid_shape = dataset_shape_from_registration(
+            {
+                "datasetId": "unit-valid-shape",
+                "rowCount": 3,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "split": "string",
+                },
+            }
+        )
+        self.assertIsNone(validate_synthetic_dataset_shape(valid_shape))
+
+        _, too_large = dataset_shape_from_registration(
+            {
+                "datasetId": "unit-large-shape",
+                "rowCount": 10_001,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "outputTokenCount": "integer",
+                    "split": "string",
+                },
+            }
+        )
+        self.assertEqual(
+            validate_synthetic_dataset_shape(too_large),
+            RejectionReasonCode.SYNTHETIC_LIMIT,
+        )
+
+        _, schema_mismatch = dataset_shape_from_registration(
+            {
+                "datasetId": "unit-schema-shape",
+                "rowCount": 3,
+                "declaredSchema": {
+                    "exampleId": "string",
+                    "inputTokenCount": "integer",
+                    "split": "string",
+                },
+            }
+        )
+        self.assertEqual(
+            validate_synthetic_dataset_shape(schema_mismatch),
+            RejectionReasonCode.SCHEMA_MISMATCH,
+        )
 
     def test_unit_deleted_state_transition_is_terminal(self) -> None:
         """succeeded -> deleted works and deleted cannot transition elsewhere."""
