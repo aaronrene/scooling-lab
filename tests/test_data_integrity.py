@@ -1,7 +1,8 @@
-"""Data-integrity tier tests for stable Scooling Lab evidence and hashes."""
+"""Data-integrity tier tests for provenance and deletion invariants."""
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,7 +21,69 @@ EXPECTED_UNSLOTH_NOTICE = (
 
 
 class ScoolingLabDataIntegrityTests(unittest.TestCase):
-    """Data-integrity tests for retries, restarts, and license evidence."""
+    """Data-integrity tests for stable hashes, reloads, and tombstones."""
+
+    def test_data_integrity_provenance_hashes_stable_across_restarts(self) -> None:
+        """Persisted jobs reload with the same provenance and artifact hashes."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            store_path = Path(directory) / "store.json"
+            service = TrainingApiService(TrainingJobStore(persistence_path=store_path))
+            created = service.create_training_job(valid_payload("restart-stability"))
+            job_id = str(created["id"])
+            first_artifact = service.list_artifacts(job_id)["artifacts"][0]
+            first_provenance = service.get_provenance(job_id)
+
+            reloaded = TrainingApiService(TrainingJobStore(persistence_path=store_path))
+            replayed = reloaded.create_training_job(valid_payload("restart-stability"))
+            second_artifact = reloaded.list_artifacts(job_id)["artifacts"][0]
+            second_provenance = reloaded.get_provenance(job_id)
+
+            self.assertEqual(replayed["id"], job_id)
+            self.assertEqual(first_artifact["artifactHash"], second_artifact["artifactHash"])
+            self.assertEqual(first_artifact["datasetHash"], second_artifact["datasetHash"])
+            self.assertEqual(first_provenance, second_provenance)
+
+    def test_data_integrity_deletion_verification_finds_zero_residue(self) -> None:
+        """Deletion verification proves deleted hashes are absent from store output."""
+
+        service = TrainingApiService(TrainingJobStore())
+        created = service.create_training_job(valid_payload("zero-residue"))
+        job_id = str(created["id"])
+        artifact = service.list_artifacts(job_id)["artifacts"][0]
+        provenance = service.get_provenance(job_id)
+        deleted_hashes = (
+            str(artifact["datasetHash"]),
+            str(artifact["artifactHash"]),
+            str(provenance["trainingConfigHash"]),
+        )
+
+        service.delete_artifact(job_id, str(artifact["id"]))
+
+        self.assertTrue(service.verify_deleted_artifact_absence(deleted_hashes))
+
+    def test_data_integrity_tombstone_carries_no_content_fields(self) -> None:
+        """Deleted job tombstones do not carry request, model, dataset, or hash fields."""
+
+        service = TrainingApiService(TrainingJobStore())
+        created = service.create_training_job(valid_payload("tombstone"))
+        job_id = str(created["id"])
+        artifact_id = str(service.list_artifacts(job_id)["artifacts"][0]["id"])
+
+        service.delete_artifact(job_id, artifact_id)
+        tombstone_json = json.dumps(service.get_training_job(job_id), sort_keys=True)
+
+        forbidden_terms = (
+            "artifactHash",
+            "datasetHash",
+            "fixture-tiny-llm",
+            "fixture:synthetic-tiny-v1",
+            "request",
+            "trainingParameters",
+        )
+        for forbidden in forbidden_terms:
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, tombstone_json)
 
     def test_data_integrity_job_and_artifact_hashes_survive_restart(self) -> None:
         """Job id, dataset hash, and artifact hash are stable after reload."""

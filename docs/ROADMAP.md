@@ -22,6 +22,8 @@
 - Keep validation server-side.
 - Preserve audit metadata without learner-content logs.
 - Add content-free fixtures that can be shared with Scooling and Knowtation tests.
+- Add content-free provenance records, bounded retention policies, idempotent deletion, and deletion
+  verification before private data or real artifacts are allowed.
 
 ## Phase T3: Worker Skeleton
 
@@ -29,3 +31,11 @@
 - Run only approved dependencies.
 - Store artifacts outside the main app database.
 - Keep real learner data and private model artifacts out of repository history.
+- Keep the fixture worker path dependency-free until the isolation step is accepted.
+
+## Slice 5: Fixture Provenance, Retention, And Deletion
+
+- Emit validated provenance for completed fixture jobs.
+- Evaluate retention on access and through explicit sweeps.
+- Delete artifact placeholders, metadata, provenance, and job content fields as one cascade.
+- Verify deleted artifact hashes are absent from store outputs before private data is allowed.

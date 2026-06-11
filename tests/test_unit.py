@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import unittest
 
 from scooling_lab_helpers import valid_payload
@@ -9,7 +10,16 @@ from scooling_lab_helpers import valid_payload
 from scooling_lab.contracts import TrainingJobRequest, TrainingJobStatus
 from scooling_lab.errors import ApiError, ErrorCode, error_payload
 from scooling_lab.license_policy import BomEntry, LicensePolicyError, validate_entry
+from scooling_lab.provenance import ProvenanceRecord, validate_provenance_record
+from scooling_lab.retention import (
+    RetentionPolicyClass,
+    expires_at,
+    is_expired,
+    retention_policy_from_mapping,
+)
+from scooling_lab.service import TrainingApiService
 from scooling_lab.state_machine import transition
+from scooling_lab.store import TrainingJobStore
 
 
 class ScoolingLabUnitTests(unittest.TestCase):
@@ -38,6 +48,20 @@ class ScoolingLabUnitTests(unittest.TestCase):
             transition(TrainingJobStatus.QUEUED, TrainingJobStatus.SUCCEEDED)
         self.assertEqual(raised.exception.code, ErrorCode.INVALID_TRANSITION)
 
+    def test_unit_deleted_state_transition_is_terminal(self) -> None:
+        """succeeded -> deleted works and deleted cannot transition elsewhere."""
+
+        self.assertEqual(
+            transition(TrainingJobStatus.SUCCEEDED, TrainingJobStatus.DELETED),
+            TrainingJobStatus.DELETED,
+        )
+        self.assertEqual(
+            transition(TrainingJobStatus.DELETED, TrainingJobStatus.DELETED),
+            TrainingJobStatus.DELETED,
+        )
+        with self.assertRaises(ApiError):
+            transition(TrainingJobStatus.DELETED, TrainingJobStatus.RUNNING)
+
     def test_unit_schema_rejects_unsafe_fields_and_unapproved_models(self) -> None:
         """Dangerous keys and unknown model ids fail in schema validation."""
 
@@ -50,6 +74,75 @@ class ScoolingLabUnitTests(unittest.TestCase):
         model_payload["modelId"] = "unapproved-model"
         with self.assertRaises(ApiError):
             TrainingJobRequest.from_mapping(model_payload)
+
+    def test_unit_provenance_schema_rejects_free_text_paths_and_urls(self) -> None:
+        """Provenance accepts only exact hashes, ids, timestamps, and schema version."""
+
+        record = ProvenanceRecord(
+            artifact_hash="b" * 64,
+            base_model_id="fixture-tiny-llm",
+            created_at="2026-06-11T00:00:00Z",
+            dataset_hash="a" * 64,
+            job_id="job_" + "1" * 24,
+            training_config_hash="c" * 64,
+        )
+        validate_provenance_record(record)
+
+        unsafe_values = (
+            "prompt body with words",
+            "../private/path",
+            "https://attacker.invalid/model",
+        )
+        for unsafe in unsafe_values:
+            payload = record.to_dict()
+            payload["baseModelId"] = unsafe
+            with self.subTest(unsafe=unsafe):
+                with self.assertRaises(ApiError):
+                    validate_provenance_record(payload)
+
+    def test_unit_retention_ttl_math_is_bounded_and_deterministic(self) -> None:
+        """Retention policies validate TTL bounds and evaluate expiry exactly."""
+
+        policy = retention_policy_from_mapping(
+            {"policyClass": "ephemeral", "ttlSeconds": 60}
+        )
+        self.assertEqual(policy.policy_class, RetentionPolicyClass.EPHEMERAL)
+        self.assertEqual(expires_at("2026-06-11T00:00:00Z", policy), "2026-06-11T00:01:00Z")
+        self.assertFalse(
+            is_expired(
+                "2026-06-11T00:00:00Z",
+                policy,
+                datetime(2026, 6, 11, 0, 0, 59, tzinfo=UTC),
+            )
+        )
+        self.assertTrue(
+            is_expired(
+                "2026-06-11T00:00:00Z",
+                policy,
+                datetime(2026, 6, 11, 0, 1, 0, tzinfo=UTC),
+            )
+        )
+        with self.assertRaises(ApiError):
+            retention_policy_from_mapping({"policyClass": "ephemeral", "ttlSeconds": 59})
+
+    def test_unit_deletion_state_transition_removes_content_fields(self) -> None:
+        """deleteArtifact leaves a content-free deleted job tombstone."""
+
+        service = TrainingApiService(TrainingJobStore())
+        created = service.create_training_job(valid_payload("delete-unit"))
+        job_id = str(created["id"])
+        artifact_id = str(service.list_artifacts(job_id)["artifacts"][0]["id"])
+
+        first_delete = service.delete_artifact(job_id, artifact_id)
+        second_delete = service.delete_artifact(job_id, artifact_id)
+        tombstone = service.get_training_job(job_id)
+
+        self.assertTrue(first_delete["deleted"])
+        self.assertTrue(first_delete["verified"])
+        self.assertTrue(second_delete["alreadyDeleted"])
+        self.assertEqual(tombstone["status"], "deleted")
+        self.assertNotIn("request", tombstone)
+        self.assertNotIn("artifactHash", str(tombstone))
 
     def test_unit_license_policy_blocks_agpl_and_blocked_paths(self) -> None:
         """The BOM policy rejects AGPL licenses and Unsloth Studio/CLI paths."""

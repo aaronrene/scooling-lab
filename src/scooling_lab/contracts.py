@@ -11,6 +11,11 @@ from types import MappingProxyType
 from typing import Mapping
 
 from scooling_lab.errors import ApiError, ErrorCode
+from scooling_lab.retention import (
+    RetentionPolicy,
+    default_retention_policy,
+    retention_policy_from_mapping,
+)
 
 
 class TrainingJobStatus(str, Enum):
@@ -21,6 +26,7 @@ class TrainingJobStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    DELETED = "deleted"
 
 
 ALLOWED_MODEL_IDS: frozenset[str] = frozenset({"fixture-tiny-llm"})
@@ -31,6 +37,7 @@ ALLOWED_REQUEST_KEYS: frozenset[str] = frozenset(
         "datasetId",
         "modelId",
         "requestedBy",
+        "retentionPolicy",
         "trainingParameters",
     }
 )
@@ -47,6 +54,8 @@ FORBIDDEN_KEY_TERMS: tuple[str, ...] = (
 )
 SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._:-]{3,96}$")
 REQUESTER_RE = re.compile(r"^[A-Za-z0-9._:-]{3,80}$")
+JOB_ID_RE = re.compile(r"^job_[a-f0-9]{24}$")
+ARTIFACT_ID_RE = re.compile(r"^artifact_[a-f0-9]{24}$")
 FORBIDDEN_STRING_RE = re.compile(
     r"(?i)(https?://|file://|ssh://|[;&|`$<>]|\.\./|/\w|[A-Za-z]:\\)"
 )
@@ -66,6 +75,7 @@ class TrainingJobRequest:
     dataset_id: str
     model_id: str
     requested_by: str
+    retention_policy: RetentionPolicy = field(default_factory=default_retention_policy)
     training_parameters: Mapping[str, int | float | bool] = field(
         default_factory=lambda: MappingProxyType({})
     )
@@ -83,6 +93,7 @@ class TrainingJobRequest:
         dataset_id = require_safe_identifier(payload.get("datasetId"))
         model_id = require_safe_identifier(payload.get("modelId"))
         requested_by = require_requester(payload.get("requestedBy"))
+        retention_policy = retention_policy_from_mapping(payload.get("retentionPolicy"))
         training_parameters = validate_training_parameters(
             payload.get("trainingParameters", {})
         )
@@ -97,6 +108,7 @@ class TrainingJobRequest:
             dataset_id=dataset_id,
             model_id=model_id,
             requested_by=requested_by,
+            retention_policy=retention_policy,
             training_parameters=MappingProxyType(training_parameters),
         )
 
@@ -109,6 +121,7 @@ class TrainingJobRequest:
                 "idempotencyKey": self.idempotency_key,
                 "modelId": self.model_id,
                 "requestedBy": self.requested_by,
+                "retentionPolicy": self.retention_policy.to_public_dict(),
                 "trainingParameters": dict(sorted(self.training_parameters.items())),
             },
             separators=(",", ":"),
@@ -128,6 +141,7 @@ class TrainingJobRequest:
             "datasetId": self.dataset_id,
             "modelId": self.model_id,
             "requestedBy": self.requested_by,
+            "retentionPolicy": self.retention_policy.to_public_dict(),
             "trainingParameters": dict(sorted(self.training_parameters.items())),
         }
 
@@ -159,6 +173,22 @@ def require_requester(value: object) -> str:
     if not isinstance(value, str) or not REQUESTER_RE.fullmatch(value):
         raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
     if FORBIDDEN_STRING_RE.search(value):
+        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+    return value
+
+
+def require_job_id(value: object) -> str:
+    """Validate a server-generated job id before any store lookup."""
+
+    if not isinstance(value, str) or not JOB_ID_RE.fullmatch(value):
+        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+    return value
+
+
+def require_artifact_id(value: object) -> str:
+    """Validate a server-generated artifact id before any mutation."""
+
+    if not isinstance(value, str) or not ARTIFACT_ID_RE.fullmatch(value):
         raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
     return value
 
