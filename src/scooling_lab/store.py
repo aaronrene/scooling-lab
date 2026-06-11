@@ -143,6 +143,8 @@ class TrainingJobRecord:
             }
             if self.deleted_at is not None:
                 payload["deletedAt"] = self.deleted_at
+            if self.provenance is not None:
+                payload["provenance"] = self.provenance.to_dict()
             return payload
         if self.request is None:
             raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
@@ -172,6 +174,12 @@ class TrainingJobRecord:
         status = TrainingJobStatus(str(payload["status"]))
         if status == TrainingJobStatus.DELETED:
             deleted_at = payload.get("deletedAt")
+            provenance_payload = payload.get("provenance")
+            provenance: ProvenanceRecord | None = None
+            if provenance_payload is not None:
+                if not isinstance(provenance_payload, dict):
+                    raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
+                provenance = ProvenanceRecord.from_mapping(provenance_payload)
             return cls(
                 id=str(payload["id"]),
                 request=None,
@@ -179,6 +187,7 @@ class TrainingJobRecord:
                 created_at=str(payload["createdAt"]),
                 updated_at=str(payload["updatedAt"]),
                 deleted_at=str(deleted_at) if deleted_at is not None else None,
+                provenance=provenance,
             )
         request_payload = payload["request"]
         if not isinstance(request_payload, dict):
@@ -210,13 +219,24 @@ class TrainingJobRecord:
 class TrainingJobStore:
     """In-memory job store with optional server-controlled JSON persistence."""
 
-    def __init__(self, persistence_path: Path | None = None, queue_limit: int = 5) -> None:
-        """Create a store with a bounded queued/running fixture capacity."""
+    def __init__(
+        self,
+        persistence_path: Path | None = None,
+        queue_limit: int = 5,
+        max_concurrent_running: int = 1,
+    ) -> None:
+        """Create a store with bounded queued/running capacity and a concurrency limit.
+
+        ``queue_limit`` caps the total number of queued+running jobs.
+        ``max_concurrent_running`` caps how many jobs may be in the running
+        state simultaneously (default 1 — FIFO serial execution).
+        """
 
         self._lock = threading.RLock()
         self._jobs: dict[str, TrainingJobRecord] = {}
         self._persistence_path = persistence_path
         self._queue_limit = queue_limit
+        self._max_concurrent_running = max_concurrent_running
         if persistence_path is not None and persistence_path.exists():
             self._load()
 
@@ -286,12 +306,17 @@ class TrainingJobStore:
             return list(record.artifacts)
 
     def get_provenance(self, job_id: str) -> ProvenanceRecord:
-        """Return the validated provenance record for one completed job."""
+        """Return the validated provenance record for one completed job.
+
+        Provenance is readable even for deleted tombstones when the deletion
+        was triggered by retention expiry (the record retains its provenance).
+        Explicitly deleted artifacts have provenance wiped and return NOT_FOUND.
+        """
 
         require_job_id(job_id)
         with self._lock:
             record = self.get(job_id)
-            if record.status == TrainingJobStatus.DELETED or record.provenance is None:
+            if record.provenance is None:
                 raise ApiError(ErrorCode.NOT_FOUND, 404)
             return record.provenance
 
@@ -382,6 +407,38 @@ class TrainingJobStore:
             in {TrainingJobStatus.QUEUED, TrainingJobStatus.RUNNING}
         )
 
+    def running_count(self) -> int:
+        """Count jobs currently in the running state."""
+
+        return sum(
+            1
+            for record in self._jobs.values()
+            if record.status == TrainingJobStatus.RUNNING
+        )
+
+    def can_run_now(self) -> bool:
+        """Return True when the running-job slot is available."""
+
+        return self.running_count() < self._max_concurrent_running
+
+    def queue_state(self) -> dict[str, object]:
+        """Return a content-free snapshot of the job queue state."""
+
+        with self._lock:
+            queued = sum(
+                1
+                for r in self._jobs.values()
+                if r.status == TrainingJobStatus.QUEUED
+            )
+            running = self.running_count()
+            return {
+                "activeCount": queued + running,
+                "maxConcurrentRunning": self._max_concurrent_running,
+                "queueLimit": self._queue_limit,
+                "queuedCount": queued,
+                "runningCount": running,
+            }
+
     def _delete_expired_artifact_locked(
         self, record: TrainingJobRecord, now: datetime
     ) -> DeletionReceipt | None:
@@ -389,17 +446,24 @@ class TrainingJobStore:
             return None
         for artifact in record.artifacts:
             if is_expired(artifact.created_at, artifact.retention_policy, now):
-                return self._delete_artifact_locked(record, artifact, verify=False)
+                return self._delete_artifact_locked(
+                    record, artifact, verify=False, retain_provenance=True
+                )
         return None
 
     def _delete_artifact_locked(
-        self, record: TrainingJobRecord, artifact: ArtifactMetadata, verify: bool = True
+        self,
+        record: TrainingJobRecord,
+        artifact: ArtifactMetadata,
+        verify: bool = True,
+        retain_provenance: bool = False,
     ) -> DeletionReceipt:
         hashes = self._hashes_for_artifact(record, artifact)
         record.status = transition(record.status, TrainingJobStatus.DELETED)
         record.request = None
         record.artifacts = []
-        record.provenance = None
+        if not retain_provenance:
+            record.provenance = None
         record.deleted_at = utc_now_iso()
         record.updated_at = record.deleted_at
         self._save()

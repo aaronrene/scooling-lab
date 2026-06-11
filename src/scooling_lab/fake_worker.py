@@ -83,7 +83,11 @@ class FakeTrainingWorker:
         self._store = store
 
     def run_job(self, job_id: str) -> TrainingJobRecord:
-        """Move a queued job through running to succeeded and register metadata."""
+        """Move a queued job through running to succeeded and register metadata.
+
+        If provenance validation fails the job is marked ``failed`` rather than
+        raising, so the caller always receives a terminal job record.
+        """
 
         job = self._store.get(job_id)
         if job.status == TrainingJobStatus.SUCCEEDED:
@@ -104,7 +108,10 @@ class FakeTrainingWorker:
             job_id=job_id,
             training_config_hash=training_config_hash(running_job),
         )
-        validate_provenance_record(provenance)
+        try:
+            validate_provenance_record(provenance)
+        except ApiError:
+            return self._store.update_status(job_id, TrainingJobStatus.FAILED)
         self._store.register_artifact(
             job_id,
             ArtifactMetadata(

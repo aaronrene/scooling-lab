@@ -1,4 +1,4 @@
-"""Dependency-free HTTP API for the Scooling Lab T2 contract."""
+"""Dependency-free HTTP API for the Scooling Lab T2/T3 contract."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from scooling_lab.store import TrainingJobStore
 MAX_BODY_BYTES = 16_384
 JOB_ID_RE = re.compile(r"^job_[a-f0-9]{24}$")
 ARTIFACT_ID_RE = re.compile(r"^artifact_[a-f0-9]{24}$")
+DATASET_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{3,96}$")
 
 
 def parse_job_route(path: str, suffix: str = "") -> str | None:
@@ -55,6 +56,23 @@ def parse_artifact_route(path: str) -> tuple[str, str] | None:
     return job_id, artifact_id
 
 
+def parse_dataset_route(path: str, suffix: str = "") -> str | None:
+    """Extract a safe dataset id from supported dataset subresource routes."""
+
+    prefix = "/datasets/"
+    if not path.startswith(prefix):
+        return None
+    remainder = path.removeprefix(prefix)
+    if suffix:
+        ending = f"/{suffix}"
+        if not remainder.endswith(ending):
+            return None
+        remainder = remainder[: -len(ending)]
+    if "/" in remainder or not DATASET_ID_RE.fullmatch(remainder):
+        return None
+    return remainder
+
+
 def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
     """Create a request handler bound to the supplied service."""
 
@@ -64,7 +82,7 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
         server_version = "ScoolingLab/0.1"
 
         def do_POST(self) -> None:
-            """Handle createTrainingJob and cancelTrainingJob."""
+            """Handle createTrainingJob, cancelTrainingJob, and dataset routes."""
 
             path = urlparse(self.path).path
             if path == "/training/jobs":
@@ -74,10 +92,25 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
             if cancel_job_id is not None:
                 self._handle_json(lambda: service.cancel_training_job(cancel_job_id))
                 return
+            if path == "/datasets":
+                self._handle_json(lambda: service.register_dataset(self._read_json()))
+                return
+            review_dataset_id = parse_dataset_route(path, "review")
+            if review_dataset_id is not None:
+                _id = review_dataset_id
+                self._handle_json(
+                    lambda: service.review_dataset(_id, self._read_json())
+                )
+                return
+            submit_dataset_id = parse_dataset_route(path, "submit")
+            if submit_dataset_id is not None:
+                _sid = submit_dataset_id
+                self._handle_json(lambda: service.submit_dataset_for_review(_sid))
+                return
             self._send_error(ApiError(ErrorCode.NOT_FOUND, 404))
 
         def do_GET(self) -> None:
-            """Handle getTrainingJob and listArtifacts."""
+            """Handle getTrainingJob, listArtifacts, queue state, and dataset routes."""
 
             path = urlparse(self.path).path
             artifacts_job_id = parse_job_route(path, "artifacts")
@@ -91,6 +124,14 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
             job_id = parse_job_route(path)
             if job_id is not None:
                 self._handle_json(lambda: service.get_training_job(job_id))
+                return
+            if path == "/training/queue":
+                self._handle_json(service.get_queue_state)
+                return
+            dataset_id = parse_dataset_route(path)
+            if dataset_id is not None:
+                _did = dataset_id
+                self._handle_json(lambda: service.get_dataset(_did))
                 return
             self._send_error(ApiError(ErrorCode.NOT_FOUND, 404))
 
