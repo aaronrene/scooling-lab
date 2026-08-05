@@ -30,7 +30,10 @@ class TrainingJobStatus(str, Enum):
 
 
 ALLOWED_MODEL_IDS: frozenset[str] = frozenset({"fixture-tiny-llm"})
-ALLOWED_DATASET_IDS: frozenset[str] = frozenset({"fixture:synthetic-tiny-v1"})
+FIXTURE_DATASET_ID: str = "fixture:synthetic-tiny-v1"
+# Back-compat alias — prefer is_allowed_training_dataset_id() for dual-class Wave A.
+ALLOWED_DATASET_IDS: frozenset[str] = frozenset({FIXTURE_DATASET_ID})
+OWN_DATA_DATASET_ID_RE = re.compile(r"^own:[A-Za-z0-9._-]{3,64}$")
 ALLOWED_REQUEST_KEYS: frozenset[str] = frozenset(
     {
         "idempotencyKey",
@@ -65,10 +68,11 @@ FORBIDDEN_STRING_RE = re.compile(
 class TrainingJobRequest:
     """Validated createTrainingJob payload.
 
-    The schema only accepts inert fixture identifiers, bounded numeric training
-    parameters, and a caller-provided idempotency key. It rejects unknown keys so
-    browser-supplied worker URLs, callback URLs, file paths, and shell strings
-    fail before reaching the service layer.
+    The schema accepts practice fixture ids or product own-data ids
+    (``^own:[A-Za-z0-9._-]{3,64}$``), model ``fixture-tiny-llm``, bounded numeric
+    training parameters, and a caller-provided idempotency key. Product own-data
+    jobs require ``trainingParameters.dryRun: true``. Unknown keys (worker URLs,
+    callbacks, paths, shell strings) fail before the service layer.
     """
 
     idempotency_key: str
@@ -90,12 +94,13 @@ class TrainingJobRequest:
             raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
 
         idempotency_key = require_safe_identifier(payload.get("idempotencyKey"))
-        dataset_id = require_safe_identifier(payload.get("datasetId"))
+        dataset_id = require_training_dataset_id(payload.get("datasetId"))
         model_id = require_safe_identifier(payload.get("modelId"))
         requested_by = require_requester(payload.get("requestedBy"))
         retention_policy = retention_policy_from_mapping(payload.get("retentionPolicy"))
         training_parameters = validate_training_parameters(
-            payload.get("trainingParameters", {})
+            payload.get("trainingParameters", {}),
+            require_dry_run=is_own_data_dataset_id(dataset_id),
         )
 
         if model_id not in ALLOWED_MODEL_IDS:
@@ -165,6 +170,27 @@ def require_safe_identifier(value: object) -> str:
     return value
 
 
+def is_own_data_dataset_id(value: str) -> bool:
+    """Return True when value is a Wave A own-data dataset id."""
+
+    return OWN_DATA_DATASET_ID_RE.fullmatch(value) is not None
+
+
+def is_allowed_training_dataset_id(value: str) -> bool:
+    """Practice fixture or product own-data id only (SITE-FINISH-LAB-HOSTED Wave A)."""
+
+    return value == FIXTURE_DATASET_ID or is_own_data_dataset_id(value)
+
+
+def require_training_dataset_id(value: object) -> str:
+    """Accept fixture practice id or exact own:* product id; refuse all others."""
+
+    dataset_id = require_safe_identifier(value)
+    if not is_allowed_training_dataset_id(dataset_id):
+        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+    return dataset_id
+
+
 def require_requester(value: object) -> str:
     """Validate the non-secret caller label used for fixture audit context."""
 
@@ -191,8 +217,16 @@ def require_artifact_id(value: object) -> str:
     return value
 
 
-def validate_training_parameters(value: object) -> dict[str, int | float | bool]:
-    """Validate the bounded dry-run parameter set for the fake worker."""
+def validate_training_parameters(
+    value: object,
+    *,
+    require_dry_run: bool = False,
+) -> dict[str, int | float | bool]:
+    """Validate the bounded dry-run parameter set for the fake worker.
+
+    When ``require_dry_run`` is True (own-data Wave A jobs), ``dryRun: true`` must
+    be present — omission is refuse-closed.
+    """
 
     if not isinstance(value, Mapping):
         raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
@@ -220,4 +254,6 @@ def validate_training_parameters(value: object) -> dict[str, int | float | bool]
         if not isinstance(dry_run, bool) or dry_run is not True:
             raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
         parameters["dryRun"] = dry_run
+    elif require_dry_run:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
     return parameters

@@ -65,27 +65,43 @@ class T3EndToEndTests(unittest.TestCase):
         reg = self._json(
             f"{self._base}/datasets",
             "POST",
-            {"datasetId": "e2e-dataset-v1"},
+            {"datasetId": "own:e2e-dataset-v1"},
         )
         self.assertEqual(reg["status"], "registered")
 
         # Submit for review.
         submitted = self._json(
-            f"{self._base}/datasets/e2e-dataset-v1/submit", "POST"
+            f"{self._base}/datasets/own:e2e-dataset-v1/submit", "POST"
         )
         self.assertEqual(submitted["status"], "approved")
 
         # Approve it.
         approved = self._json(
-            f"{self._base}/datasets/e2e-dataset-v1/review",
+            f"{self._base}/datasets/own:e2e-dataset-v1/review",
             "POST",
             {"action": "approve"},
         )
         self.assertEqual(approved["status"], "approved")
 
         # Read back.
-        fetched = self._json(f"{self._base}/datasets/e2e-dataset-v1", "GET")
+        fetched = self._json(f"{self._base}/datasets/own:e2e-dataset-v1", "GET")
         self.assertEqual(fetched["status"], "approved")
+
+        # Product Wave A job with approved own:* dataset.
+        job = self._json(
+            f"{self._base}/training/jobs",
+            "POST",
+            {
+                "idempotencyKey": "e2e-own-job",
+                "datasetId": "own:e2e-dataset-v1",
+                "modelId": "fixture-tiny-llm",
+                "requestedBy": "e2e-test",
+                "trainingParameters": {"dryRun": True, "epochs": 1},
+            },
+        )
+        self.assertEqual(job["status"], "succeeded")
+        self.assertEqual(job["request"]["datasetId"], "own:e2e-dataset-v1")
+        self.assertTrue(job["request"]["trainingParameters"]["dryRun"])
 
     def test_e2e_t3_rejection_path_over_http(self) -> None:
         """Dataset rejection carries enum reason code; no free text reflected."""
@@ -94,7 +110,7 @@ class T3EndToEndTests(unittest.TestCase):
             f"{self._base}/datasets",
             "POST",
             {
-                "datasetId": "e2e-rejected-v1",
+                "datasetId": "own:e2e-rejected-v1",
                 "rowCount": 0,
                 "declaredSchema": {
                     "exampleId": "string",
@@ -104,9 +120,9 @@ class T3EndToEndTests(unittest.TestCase):
                 },
             },
         )
-        self._json(f"{self._base}/datasets/e2e-rejected-v1/submit", "POST")
+        self._json(f"{self._base}/datasets/own:e2e-rejected-v1/submit", "POST")
         rejected = self._json(
-            f"{self._base}/datasets/e2e-rejected-v1/review",
+            f"{self._base}/datasets/own:e2e-rejected-v1/review",
             "POST",
             {"action": "reject", "reasonCode": "DUPLICATE_SUBMISSION"},
         )
@@ -181,7 +197,7 @@ class T3EndToEndTests(unittest.TestCase):
         """Job submission against an unapproved dataset returns HTTP 403."""
 
         ds_store = DatasetStore()
-        ds_store.register("unapproved-e2e-ds")
+        ds_store.register("own:unapproved-e2e-ds")
         service = TrainingApiService(
             TrainingJobStore(), dataset_store=ds_store
         )
@@ -196,9 +212,10 @@ class T3EndToEndTests(unittest.TestCase):
                     "POST",
                     {
                         "idempotencyKey": "e2e-403-test",
-                        "datasetId": "unapproved-e2e-ds",
+                        "datasetId": "own:unapproved-e2e-ds",
                         "modelId": "fixture-tiny-llm",
                         "requestedBy": "e2e-test",
+                        "trainingParameters": {"dryRun": True},
                     },
                 )
             self.assertEqual(raised.exception.code, 403)

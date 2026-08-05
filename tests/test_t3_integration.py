@@ -43,9 +43,9 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
         """A dataset that goes through the full approval flow allows job creation."""
 
         ds_store = DatasetStore()
-        ds_store.register("custom-ds-v1")
-        ds_store.submit_for_review("custom-ds-v1")
-        ds_store.approve("custom-ds-v1")
+        ds_store.register("own:custom-ds-v1")
+        ds_store.submit_for_review("own:custom-ds-v1")
+        ds_store.approve("own:custom-ds-v1")
         # Use a service that also approves the fixture dataset (default).
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
 
@@ -53,19 +53,34 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
         created = service.create_training_job(valid_payload("integration-approved"))
         self.assertEqual(created["status"], "succeeded")
 
+        own_job = service.create_training_job(
+            {
+                "idempotencyKey": "integration-own-approved",
+                "datasetId": "own:custom-ds-v1",
+                "modelId": "fixture-tiny-llm",
+                "requestedBy": "integration-test",
+                "trainingParameters": {"dryRun": True, "epochs": 1},
+            }
+        )
+        self.assertEqual(own_job["status"], "succeeded")
+        self.assertEqual(own_job["request"]["datasetId"], "own:custom-ds-v1")
+        self.assertEqual(own_job["request"]["modelId"], "fixture-tiny-llm")
+        self.assertTrue(own_job["request"]["trainingParameters"]["dryRun"])
+
     def test_integration_t3_unapproved_dataset_blocks_job_at_api_boundary(self) -> None:
         """A dataset that is only registered (not approved) blocks job submission."""
 
         ds_store = DatasetStore()
-        ds_store.register("custom-ds-v2")
+        ds_store.register("own:custom-ds-v2")
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
         with self.assertRaises(ApiError) as raised:
             service.create_training_job(
                 {
                     "idempotencyKey": "integration-blocked",
-                    "datasetId": "custom-ds-v2",
+                    "datasetId": "own:custom-ds-v2",
                     "modelId": "fixture-tiny-llm",
                     "requestedBy": "integration-test",
+                    "trainingParameters": {"dryRun": True},
                 }
             )
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
@@ -75,19 +90,20 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "custom-ds-v3",
+            "own:custom-ds-v3",
             default_dataset_shape(RejectionReasonCode.POLICY_VIOLATION),
         )
-        ds_store.submit_for_review("custom-ds-v3")
-        ds_store.reject("custom-ds-v3", RejectionReasonCode.POLICY_VIOLATION)
+        ds_store.submit_for_review("own:custom-ds-v3")
+        ds_store.reject("own:custom-ds-v3", RejectionReasonCode.POLICY_VIOLATION)
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
         with self.assertRaises(ApiError) as raised:
             service.create_training_job(
                 {
                     "idempotencyKey": "integration-rejected",
-                    "datasetId": "custom-ds-v3",
+                    "datasetId": "own:custom-ds-v3",
                     "modelId": "fixture-tiny-llm",
                     "requestedBy": "integration-test",
+                    "trainingParameters": {"dryRun": True},
                 }
             )
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
@@ -97,12 +113,12 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "reason-ds-v1",
+            "own:reason-ds-v1",
             default_dataset_shape(RejectionReasonCode.SCHEMA_MISMATCH),
         )
-        ds_store.submit_for_review("reason-ds-v1")
-        ds_store.reject("reason-ds-v1", RejectionReasonCode.SCHEMA_MISMATCH)
-        record = ds_store.get("reason-ds-v1")
+        ds_store.submit_for_review("own:reason-ds-v1")
+        ds_store.reject("own:reason-ds-v1", RejectionReasonCode.SCHEMA_MISMATCH)
+        record = ds_store.get("own:reason-ds-v1")
         public = record.to_public_dict()
         self.assertEqual(public["rejectionReasonCode"], "SCHEMA_MISMATCH")
         self.assertEqual(public["status"], DatasetStatus.REJECTED.value)
@@ -112,12 +128,12 @@ class T3IntegrationDatasetReviewLifecycleTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "clean-ds-v1",
+            "own:clean-ds-v1",
             default_dataset_shape(RejectionReasonCode.FORMAT_INVALID),
         )
-        ds_store.submit_for_review("clean-ds-v1")
-        ds_store.reject("clean-ds-v1", RejectionReasonCode.FORMAT_INVALID)
-        public_str = str(ds_store.get("clean-ds-v1").to_public_dict())
+        ds_store.submit_for_review("own:clean-ds-v1")
+        ds_store.reject("own:clean-ds-v1", RejectionReasonCode.FORMAT_INVALID)
+        public_str = str(ds_store.get("own:clean-ds-v1").to_public_dict())
         self.assertNotIn("caller message", public_str)
         self.assertIn("FORMAT_INVALID", public_str)
 

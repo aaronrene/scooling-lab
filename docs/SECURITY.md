@@ -2,9 +2,10 @@
 
 ## Simple Summary
 
-Scooling Lab can run only synthetic fixture jobs in this phase. It cannot receive private learner data,
-browser credentials, worker URLs, shell commands, callback URLs, local file paths, model artifacts, or
-GPU billing instructions.
+Scooling Lab can run only synthetic fixture jobs and Wave A own-data package ids (`own:*`)
+with the same fake worker. It cannot receive private note bodies on the wire, browser
+credentials, worker URLs, shell commands, callback URLs, local file paths, Unsloth/GPU
+billing instructions, or `dryRun: false` for product jobs.
 
 ## Technical Controls
 
@@ -12,8 +13,11 @@ GPU billing instructions.
 - The schema rejects unknown fields and dangerous key terms such as `url`, `path`, `file`, `shell`,
   `command`, `callback`, `webhook`, and `worker`.
 - The only approved model id is `fixture-tiny-llm`.
-- The only approved dataset id is `fixture:synthetic-tiny-v1`.
-- The fake worker reads only the committed synthetic fixture dataset.
+- Approved dataset ids are the practice fixture `fixture:synthetic-tiny-v1` **or**
+  product ids matching `^own:[A-Za-z0-9._-]{3,64}$` (after DatasetStore approval).
+- Product `own:*` jobs require `trainingParameters.dryRun: true`.
+- The fake worker reads only the committed synthetic fixture content; own-data jobs still
+  use the Wave A non-Unsloth worker.
 - API errors return stable codes and safe messages without internal paths or request payload echoes.
 - Default HTTP logging is suppressed to avoid path and payload leakage.
 - Tests must not perform network egress.

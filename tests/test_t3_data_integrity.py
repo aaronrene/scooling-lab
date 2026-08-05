@@ -98,11 +98,11 @@ class T3DataIntegrityTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "di-rejection-check",
+            "own:di-rejection-check",
             default_dataset_shape(RejectionReasonCode.SYNTHETIC_LIMIT),
         )
-        ds_store.submit_for_review("di-rejection-check")
-        public = ds_store.get("di-rejection-check").to_public_dict()
+        ds_store.submit_for_review("own:di-rejection-check")
+        public = ds_store.get("own:di-rejection-check").to_public_dict()
         reason_value = str(public.get("rejectionReasonCode", ""))
         self.assertIn(reason_value, {c.value for c in RejectionReasonCode})
         self.assertNotIn("caller supplied reason text", str(public))

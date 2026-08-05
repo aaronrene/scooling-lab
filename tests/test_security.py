@@ -131,7 +131,7 @@ class ScoolingLabSecurityTests(unittest.TestCase):
         service = TrainingApiService(TrainingJobStore())
         unknown = service.register_dataset(
             {
-                "datasetId": "security-unknown-shape",
+                "datasetId": "own:security-unknown",
                 "rowCount": 3,
                 "declaredSchema": {
                     "exampleId": "string",
@@ -144,7 +144,7 @@ class ScoolingLabSecurityTests(unittest.TestCase):
         )
         forbidden = service.register_dataset(
             {
-                "datasetId": "security-forbidden-shape",
+                "datasetId": "own:security-forbidden",
                 "rowCount": 3,
                 "declaredSchema": {
                     "exampleId": "string",
