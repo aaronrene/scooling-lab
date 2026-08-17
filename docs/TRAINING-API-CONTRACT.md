@@ -2,9 +2,18 @@
 
 ## Simple Summary
 
-Scooling Lab exposes a small local training contract that only runs a synthetic fake-worker job. It
-does not train a model, install Unsloth, use private data, call external workers, or create model
-files.
+Scooling Lab exposes a local training contract for:
+
+1. **Wave A** — synthetic fake-worker jobs (`fixture-tiny-llm` + `dryRun: true`),
+   including approved `own:*` package ids with the same fake worker.
+2. **Product GPU** — approved `own:*` jobs with `scooling-lab-gpu-personal-v1` +
+   `dryRun: false`, completed by an **isolated** Lab-owned worker subprocess
+   (`python -m scooling_lab.gpu_worker`). Provenance stays content-free;
+   `baseModelId` is the GPU model id. Private note bodies are not loaded.
+   Unsloth is still evidence-only (not installed).
+
+It does not install Unsloth, expose worker URLs on the wire, or accept browser-supplied
+callbacks, paths, or shell commands.
 
 ## Routes
 
@@ -15,17 +24,29 @@ files.
 - `GET /training/jobs/{job_id}/artifacts`: `listArtifacts`.
 - `GET /training/jobs/{job_id}/provenance`: `getProvenance`.
 - `DELETE /training/jobs/{job_id}/artifacts/{artifact_id}`: `deleteArtifact`.
+- `POST /datasets`: register a dataset id for review.
+- `POST /datasets/{id}/submit`: submit registered dataset for review.
+- `POST /datasets/{id}/review`: approve or reject.
+- `GET /datasets/{id}`: dataset status (content-free).
 
 ## createTrainingJob Request
 
 Allowed fields:
 
 - `idempotencyKey`: safe identifier.
-- `datasetId`: must be `fixture:synthetic-tiny-v1`.
-- `modelId`: must be `fixture-tiny-llm`.
+- `datasetId`: exactly one of:
+  - practice: `fixture:synthetic-tiny-v1`
+  - product (Wave A): matches `^own:[A-Za-z0-9._-]{3,64}$`
+- `modelId`: exactly one of:
+  - Wave A / practice: `fixture-tiny-llm`
+  - Product GPU: `scooling-lab-gpu-personal-v1` (approved `own:*` only)
 - `requestedBy`: non-secret caller label.
 - `retentionPolicy`: optional bounded `policyClass` and `ttlSeconds`.
-- `trainingParameters`: bounded `epochs`, `learningRate`, and `dryRun: true`.
+- `trainingParameters`: bounded `epochs`, `learningRate`, and `dryRun`.
+  - Wave A product `own:*` jobs **must** send `dryRun: true`.
+  - Practice fixture jobs may omit `dryRun`; when present it must be `true`.
+  - Product GPU jobs **must** send `modelId: scooling-lab-gpu-personal-v1` and
+    `dryRun: false` (practice fixture + GPU is refused).
 
 Rejected at schema validation:
 
@@ -35,7 +56,11 @@ Rejected at schema validation:
 - File paths or model paths.
 - Shell strings or command fields.
 - Unapproved model ids.
-- Non-fixture dataset ids.
+- Dataset ids that are neither the practice fixture nor a valid `own:*` id.
+
+Job creation also requires the dataset to be **approved** in `DatasetStore`
+(fixture is pre-approved; `own:*` must register → submit → approve first).
+Unapproved ids return `DATASET_NOT_APPROVED` (HTTP 403).
 
 ## State Machine
 
@@ -235,14 +260,16 @@ the bound remain `queued` until a running slot is free.
 
 ### Dataset Approval Gate
 
-`POST /training/jobs` now enforces:
+`POST /training/jobs` enforces:
 
-1. **Schema validation** — `datasetId` must be a safe identifier (format).
+1. **Schema validation** — `datasetId` is practice fixture **or** exact `own:*` product id;
+   `modelId` is `fixture-tiny-llm`; Wave A `own:*` requires `dryRun: true`.
 2. **Approval check** — the dataset must be in `approved` state in the `DatasetStore`.
    Returns `DATASET_NOT_APPROVED` (HTTP 403) otherwise.
 
-The synthetic fixture dataset `fixture:synthetic-tiny-v1` is pre-approved so all
-existing job submission flows are unaffected.
+The synthetic fixture dataset `fixture:synthetic-tiny-v1` is pre-approved so practice
+job submission flows are unaffected. Product packages use `own:*` ids through
+register → submit → approve before job create.
 
 ### Retention Integration — Expiry Tombstone Provenance
 

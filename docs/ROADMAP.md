@@ -33,6 +33,15 @@
 - Keep real learner data and private model artifacts out of repository history.
 - Keep the fixture worker path dependency-free until the isolation step is accepted.
 
+## Slice GPU: Product GPU shape + isolated worker (LAB-GPU-TRAIN S0)
+
+- Accept `scooling-lab-gpu-personal-v1` + `dryRun: false` for approved `own:*` only.
+- Reject GPU shape for the practice fixture id.
+- Keep Wave A `fixture-tiny-llm` + `dryRun: true` non-regression.
+- Complete GPU jobs via isolated `python -m scooling_lab.gpu_worker` (stdlib, Apache-2.0).
+- Provenance content-free; `baseModelId` = GPU model id.
+- Unsloth still evidence-only — no install / no weight training in this slice.
+
 ## Slice 5: Fixture Provenance, Retention, And Deletion
 
 - Emit validated provenance for completed fixture jobs.

@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Iterable
 
 from scooling_lab.contracts import (
+    GPU_PRODUCT_MODEL_ID,
     TrainingJobRequest,
     TrainingJobStatus,
     require_artifact_id,
@@ -19,15 +20,19 @@ from scooling_lab.dataset_review import (
 )
 from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.fake_worker import FakeTrainingWorker
+from scooling_lab.gpu_worker import IsolatedGpuWorker
 from scooling_lab.store import TrainingJobRecord, TrainingJobStore
 
 
 class TrainingApiService:
-    """Implements the T2/T3 API contract over a store, fake worker, and dataset store.
+    """Implements the T2/T3 API contract over a store, workers, and dataset store.
 
     Dataset approval is checked before any job is created.  A ``threading.Semaphore``
     enforces the ``max_concurrent_running`` bound from the store so that concurrent
     callers see at most that many jobs in the running state simultaneously.
+
+    Wave A jobs (``fixture-tiny-llm``) use the in-process fake worker. Product GPU
+    jobs (``scooling-lab-gpu-personal-v1``) use the isolated GPU worker subprocess.
     """
 
     def __init__(
@@ -36,14 +41,15 @@ class TrainingApiService:
         auto_run_worker: bool = True,
         dataset_store: DatasetStore | None = None,
     ) -> None:
-        """Create a service with optional synchronous fake-worker completion.
+        """Create a service with optional synchronous worker completion.
 
         If ``dataset_store`` is omitted a default store pre-approving the
         synthetic fixture dataset is used, so existing callers are unaffected.
         """
 
         self._store = store
-        self._worker = FakeTrainingWorker(store)
+        self._fake_worker = FakeTrainingWorker(store)
+        self._gpu_worker = IsolatedGpuWorker(store)
         self._auto_run_worker = auto_run_worker
         self._dataset_store = dataset_store if dataset_store is not None else DatasetStore()
         # Semaphore mirrors the store's max_concurrent_running for thread safety.
@@ -167,7 +173,7 @@ class TrainingApiService:
         return self._store.verify_hash_absence(hash_values)
 
     def _run_if_configured(self, job_id: str) -> TrainingJobRecord:
-        """Run a queued/running job through the fake worker when configured."""
+        """Run a queued/running job through the matching worker when configured."""
 
         if not self._auto_run_worker:
             return self._store.get(job_id)
@@ -180,8 +186,18 @@ class TrainingApiService:
         acquired = self._run_semaphore.acquire(blocking=True, timeout=10)
         try:
             if acquired:
-                return self._worker.run_job(job_id)
+                return self._dispatch_worker(job_id)
             return self._store.get(job_id)
         finally:
             if acquired:
                 self._run_semaphore.release()
+
+    def _dispatch_worker(self, job_id: str) -> TrainingJobRecord:
+        """Route Wave A jobs to the fake worker and GPU jobs to the isolated worker."""
+
+        job = self._store.get(job_id)
+        if job.request is None:
+            raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
+        if job.request.model_id == GPU_PRODUCT_MODEL_ID:
+            return self._gpu_worker.run_job(job_id)
+        return self._fake_worker.run_job(job_id)

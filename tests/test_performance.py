@@ -99,7 +99,7 @@ class ScoolingLabPerformanceTests(unittest.TestCase):
             retry = service.retry_training_job(str(job["id"]))
             self.assertEqual(retry["retryOfJobId"], job["id"])
         for index in range(300):
-            dataset_id = f"perf-dataset-{index}"
+            dataset_id = f"own:perf-dataset-{index}"
             service.register_dataset(
                 {
                     "datasetId": dataset_id,

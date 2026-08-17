@@ -57,7 +57,7 @@ class ScoolingLabIntegrationTests(unittest.TestCase):
         service = TrainingApiService(TrainingJobStore())
         valid = service.register_dataset(
             {
-                "datasetId": "integration-valid-dataset",
+                "datasetId": "own:integration-valid",
                 "rowCount": 4,
                 "declaredSchema": {
                     "exampleId": "string",
@@ -69,7 +69,7 @@ class ScoolingLabIntegrationTests(unittest.TestCase):
         )
         rejected = service.register_dataset(
             {
-                "datasetId": "integration-reject-dataset",
+                "datasetId": "own:integration-reject",
                 "rowCount": 0,
                 "declaredSchema": {
                     "exampleId": "string",

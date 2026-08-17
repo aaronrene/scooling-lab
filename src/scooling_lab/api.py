@@ -209,5 +209,22 @@ def run_server(host: str, port: int, persistence_path: Path | None = None) -> No
     server.serve_forever()
 
 
+def main() -> None:
+    """CLI / platform entrypoint — bind all interfaces and honor ``PORT``."""
+
+    import os
+
+    host = os.environ.get("SCOOLING_LAB_HOST", "0.0.0.0")
+    port_text = os.environ.get("PORT", "8080")
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid PORT={port_text!r}") from exc
+    if not 1 <= port <= 65_535:
+        raise SystemExit(f"PORT out of range: {port}")
+
+    run_server(host, port)
+
+
 if __name__ == "__main__":
-    run_server("127.0.0.1", 8080)
+    main()

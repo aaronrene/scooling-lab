@@ -1,0 +1,9 @@
+knowtation-staging-clone-verify
+.git
+.muse
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.venv
+venv
+*.egg-info

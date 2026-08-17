@@ -87,7 +87,7 @@ class ScoolingLabUnitTests(unittest.TestCase):
 
         _, valid_shape = dataset_shape_from_registration(
             {
-                "datasetId": "unit-valid-shape",
+                "datasetId": "own:unit-valid-shape",
                 "rowCount": 3,
                 "declaredSchema": {
                     "exampleId": "string",
@@ -101,7 +101,7 @@ class ScoolingLabUnitTests(unittest.TestCase):
 
         _, too_large = dataset_shape_from_registration(
             {
-                "datasetId": "unit-large-shape",
+                "datasetId": "own:unit-large-shape",
                 "rowCount": 10_001,
                 "declaredSchema": {
                     "exampleId": "string",
@@ -118,7 +118,7 @@ class ScoolingLabUnitTests(unittest.TestCase):
 
         _, schema_mismatch = dataset_shape_from_registration(
             {
-                "datasetId": "unit-schema-shape",
+                "datasetId": "own:unit-schema-shape",
                 "rowCount": 3,
                 "declaredSchema": {
                     "exampleId": "string",
@@ -158,6 +158,25 @@ class ScoolingLabUnitTests(unittest.TestCase):
         model_payload["modelId"] = "unapproved-model"
         with self.assertRaises(ApiError):
             TrainingJobRequest.from_mapping(model_payload)
+
+        foreign_dataset = valid_payload()
+        foreign_dataset["datasetId"] = "custom-ds-v1"
+        with self.assertRaises(ApiError):
+            TrainingJobRequest.from_mapping(foreign_dataset)
+
+        own_payload = valid_payload()
+        own_payload["datasetId"] = "own:packaged.notes_v1"
+        own_payload["trainingParameters"] = {"dryRun": True, "epochs": 1}
+        # Unapproved own:* fails later at the service; schema accepts it.
+        parsed = TrainingJobRequest.from_mapping(own_payload)
+        self.assertEqual(parsed.dataset_id, "own:packaged.notes_v1")
+        self.assertTrue(parsed.training_parameters["dryRun"])
+
+        own_no_dry = valid_payload()
+        own_no_dry["datasetId"] = "own:packaged.notes_v1"
+        own_no_dry.pop("trainingParameters", None)
+        with self.assertRaises(ApiError):
+            TrainingJobRequest.from_mapping(own_no_dry)
 
     def test_unit_provenance_schema_rejects_free_text_paths_and_urls(self) -> None:
         """Provenance accepts only exact hashes, ids, timestamps, and schema version."""
