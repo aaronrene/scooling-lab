@@ -2,10 +2,18 @@
 
 ## Simple Summary
 
-Scooling Lab exposes a small local training contract that only runs a synthetic fake-worker job. It
-does not train a model, install Unsloth, use private learner text on the wire, call external workers,
-or create model files. Wave A product jobs may use own-data package ids (`own:*`) with the same
-fake worker (`fixture-tiny-llm` + `dryRun: true`).
+Scooling Lab exposes a local training contract for:
+
+1. **Wave A** — synthetic fake-worker jobs (`fixture-tiny-llm` + `dryRun: true`),
+   including approved `own:*` package ids with the same fake worker.
+2. **Product GPU** — approved `own:*` jobs with `scooling-lab-gpu-personal-v1` +
+   `dryRun: false`, completed by an **isolated** Lab-owned worker subprocess
+   (`python -m scooling_lab.gpu_worker`). Provenance stays content-free;
+   `baseModelId` is the GPU model id. Private note bodies are not loaded.
+   Unsloth is still evidence-only (not installed).
+
+It does not install Unsloth, expose worker URLs on the wire, or accept browser-supplied
+callbacks, paths, or shell commands.
 
 ## Routes
 
@@ -29,12 +37,16 @@ Allowed fields:
 - `datasetId`: exactly one of:
   - practice: `fixture:synthetic-tiny-v1`
   - product (Wave A): matches `^own:[A-Za-z0-9._-]{3,64}$`
-- `modelId`: must be `fixture-tiny-llm`.
+- `modelId`: exactly one of:
+  - Wave A / practice: `fixture-tiny-llm`
+  - Product GPU: `scooling-lab-gpu-personal-v1` (approved `own:*` only)
 - `requestedBy`: non-secret caller label.
 - `retentionPolicy`: optional bounded `policyClass` and `ttlSeconds`.
 - `trainingParameters`: bounded `epochs`, `learningRate`, and `dryRun`.
-  - Product `own:*` jobs **must** send `dryRun: true`.
+  - Wave A product `own:*` jobs **must** send `dryRun: true`.
   - Practice fixture jobs may omit `dryRun`; when present it must be `true`.
+  - Product GPU jobs **must** send `modelId: scooling-lab-gpu-personal-v1` and
+    `dryRun: false` (practice fixture + GPU is refused).
 
 Rejected at schema validation:
 

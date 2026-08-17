@@ -47,7 +47,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
         )
         observed_running: list[int] = []
         lock = threading.Lock()
-        original_run_job = service._worker.run_job
+        original_run_job = service._fake_worker.run_job
 
         def instrumented_run(job_id: str) -> object:  # type: ignore[misc]
             snapshot = service._store.running_count()
@@ -55,7 +55,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
                 observed_running.append(snapshot)
             return original_run_job(job_id)
 
-        service._worker.run_job = instrumented_run  # type: ignore[method-assign]
+        service._fake_worker.run_job = instrumented_run  # type: ignore[method-assign]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
             list(

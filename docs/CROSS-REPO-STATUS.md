@@ -2,21 +2,23 @@
 
 ## Simple Summary
 
-The Scooling Lab T0/T2 training contract lives in this `scooling-lab` repository. It does not touch
+The Scooling Lab training contract lives in this `scooling-lab` repository. It does not touch
 main Scooling runtime flows, private code, Knowtation vault data, MuseHub internals, or model
-artifacts.
+weight artifacts.
 
 ## Technical Status
 
-- Main Scooling app runtime: unchanged by the T0/T2 Scooling Lab package.
+- Main Scooling app runtime: unchanged by this Lab package.
 - Scooling Lab package: `src/scooling_lab`.
 - Synthetic fixture data: `src/scooling_lab/fixtures/synthetic_training_dataset.jsonl`.
-- Training API surface: local HTTP contract only.
-- Worker surface: in-process fake worker only.
+- Training API surface: local HTTP contract.
+- Worker surface:
+  - Wave A: in-process fake worker (`fixture-tiny-llm` + `dryRun: true`).
+  - Product GPU: isolated subprocess worker (`scooling-lab-gpu-personal-v1` +
+    `dryRun: false`) via `python -m scooling_lab.gpu_worker`.
 - Dependency status: no runtime dependencies beyond the Python standard library.
 - Unsloth status: evidence-only pinned candidate; no install, no imports, no package lock row.
-- GitHub target: feature branch `feat/t0-dependency-inventory` to `main` PR.
-- Muse target: staging push for the same feature branch after local and GitHub CI verification.
+- GPU honesty: content-free provenance only; no private note bodies; no Unsloth weight training yet.
 
 ## Untouched Boundaries
 

@@ -29,7 +29,9 @@ class TrainingJobStatus(str, Enum):
     DELETED = "deleted"
 
 
-ALLOWED_MODEL_IDS: frozenset[str] = frozenset({"fixture-tiny-llm"})
+WAVE_A_MODEL_ID: str = "fixture-tiny-llm"
+GPU_PRODUCT_MODEL_ID: str = "scooling-lab-gpu-personal-v1"
+ALLOWED_MODEL_IDS: frozenset[str] = frozenset({WAVE_A_MODEL_ID, GPU_PRODUCT_MODEL_ID})
 FIXTURE_DATASET_ID: str = "fixture:synthetic-tiny-v1"
 # Back-compat alias — prefer is_allowed_training_dataset_id() for dual-class Wave A.
 ALLOWED_DATASET_IDS: frozenset[str] = frozenset({FIXTURE_DATASET_ID})
@@ -69,10 +71,14 @@ class TrainingJobRequest:
     """Validated createTrainingJob payload.
 
     The schema accepts practice fixture ids or product own-data ids
-    (``^own:[A-Za-z0-9._-]{3,64}$``), model ``fixture-tiny-llm``, bounded numeric
-    training parameters, and a caller-provided idempotency key. Product own-data
-    jobs require ``trainingParameters.dryRun: true``. Unknown keys (worker URLs,
-    callbacks, paths, shell strings) fail before the service layer.
+    (``^own:[A-Za-z0-9._-]{3,64}$``) with one of two model shapes:
+
+    * Wave A — ``fixture-tiny-llm``; product ``own:*`` requires ``dryRun: true``.
+    * GPU — ``scooling-lab-gpu-personal-v1`` + ``dryRun: false`` for approved
+      ``own:*`` only (practice fixture + GPU is refused).
+
+    Unknown keys (worker URLs, callbacks, paths, shell strings) fail before the
+    service layer.
     """
 
     idempotency_key: str
@@ -98,13 +104,24 @@ class TrainingJobRequest:
         model_id = require_safe_identifier(payload.get("modelId"))
         requested_by = require_requester(payload.get("requestedBy"))
         retention_policy = retention_policy_from_mapping(payload.get("retentionPolicy"))
-        training_parameters = validate_training_parameters(
-            payload.get("trainingParameters", {}),
-            require_dry_run=is_own_data_dataset_id(dataset_id),
-        )
-
         if model_id not in ALLOWED_MODEL_IDS:
             raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+
+        is_own = is_own_data_dataset_id(dataset_id)
+        if model_id == GPU_PRODUCT_MODEL_ID:
+            # GPU shape: approved own:* only; practice fixture is refuse-closed.
+            if not is_own:
+                raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+            training_parameters = validate_training_parameters(
+                payload.get("trainingParameters", {}),
+                dry_run_mode="gpu",
+            )
+        else:
+            training_parameters = validate_training_parameters(
+                payload.get("trainingParameters", {}),
+                dry_run_mode="wave_a",
+                require_dry_run=is_own,
+            )
 
         return cls(
             idempotency_key=idempotency_key,
@@ -221,13 +238,19 @@ def validate_training_parameters(
     value: object,
     *,
     require_dry_run: bool = False,
+    dry_run_mode: str = "wave_a",
 ) -> dict[str, int | float | bool]:
-    """Validate the bounded dry-run parameter set for the fake worker.
+    """Validate the bounded training parameter set for Wave A or GPU shapes.
 
-    When ``require_dry_run`` is True (own-data Wave A jobs), ``dryRun: true`` must
-    be present — omission is refuse-closed.
+    ``dry_run_mode``:
+
+    * ``wave_a`` — when ``dryRun`` is present it must be ``true``; when
+      ``require_dry_run`` is True (own-data Wave A), ``dryRun: true`` is required.
+    * ``gpu`` — ``dryRun: false`` is required (product GPU path only).
     """
 
+    if dry_run_mode not in {"wave_a", "gpu"}:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
     if not isinstance(value, Mapping):
         raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
     allowed_keys = {"epochs", "learningRate", "dryRun"}
@@ -249,6 +272,15 @@ def validate_training_parameters(
         ):
             raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
         parameters["learningRate"] = float(learning_rate)
+    if dry_run_mode == "gpu":
+        if "dryRun" not in value:
+            raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+        dry_run = value["dryRun"]
+        if not isinstance(dry_run, bool) or dry_run is not False:
+            raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
+        parameters["dryRun"] = False
+        return parameters
+
     if "dryRun" in value:
         dry_run = value["dryRun"]
         if not isinstance(dry_run, bool) or dry_run is not True:

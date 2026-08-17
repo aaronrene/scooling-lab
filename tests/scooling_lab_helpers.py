@@ -30,3 +30,22 @@ def valid_payload(
     if retention_policy is not None:
         payload["retentionPolicy"] = retention_policy
     return payload
+
+
+def valid_gpu_payload(
+    suffix: str = "gpu",
+    dataset_id: str = "own:gpu-packaged.notes_v1",
+) -> dict[str, object]:
+    """Return a valid product GPU createTrainingJob payload (schema only)."""
+
+    return {
+        "idempotencyKey": f"gpu-{suffix}-0001",
+        "datasetId": dataset_id,
+        "modelId": "scooling-lab-gpu-personal-v1",
+        "requestedBy": "unit-test",
+        "trainingParameters": {
+            "epochs": 1,
+            "learningRate": 0.1,
+            "dryRun": False,
+        },
+    }
