@@ -2,3 +2,13 @@ Scooling Lab
 Copyright 2026 Scooling contributors.
 
 This product includes software developed for the Scooling project.
+
+## Hugging Face base model (T4 GPU worker)
+
+| Field | Value |
+| --- | --- |
+| Product model id (wire) | `scooling-lab-gpu-personal-v1` |
+| HF base model | `unsloth/Llama-3.2-3B-Instruct` |
+| License | Llama 3.2 Community License |
+| Acceptance | Operator accepts terms at https://huggingface.co/unsloth/Llama-3.2-3B-Instruct |
+| Auth | `HF_TOKEN` env on GPU host only — never in git, HTTP JSON, or logs |

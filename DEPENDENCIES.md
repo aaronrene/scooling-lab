@@ -6,7 +6,16 @@ license is not allowlisted, or when a blocked source path such as `studio/` or
 
 | Name | Version | License | Source path evidence | License evidence |
 | --- | --- | --- | --- | --- |
+| accelerate | 1.4.0 | Apache-2.0 | PyPI/accelerate | PyPI-license-metadata |
+| bitsandbytes | 0.45.4 | MIT | PyPI/bitsandbytes | PyPI-license-metadata |
+| datasets | 3.3.2 | Apache-2.0 | PyPI/datasets | PyPI-license-metadata |
+| peft | 0.14.0 | Apache-2.0 | PyPI/peft | PyPI-license-metadata |
 | scooling-lab | 0.1.0 | Apache-2.0 | pyproject.toml; src/scooling_lab | [project] metadata and committed source tree |
+| torch | 2.5.1 | BSD-3-Clause | PyPI/torch | PyPI-license-metadata |
+| transformers | 4.48.3 | Apache-2.0 | PyPI/transformers | PyPI-license-metadata |
+| trl | 0.15.2 | Apache-2.0 | PyPI/trl | PyPI-license-metadata |
+| unsloth | 2026.6.1 | Apache-2.0 | PyPI/unsloth | docs/UNSLOTH-LICENSE-EVIDENCE.md |
 
-No Unsloth package is installed or locked in this phase. The pinned Unsloth
-candidate is recorded as evidence only in `docs/UNSLOTH-LICENSE-EVIDENCE.md`.
+GPU worker runtime dependencies are locked in `requirements.lock` and installed
+only on the GPU host (not the stdlib API container). Unsloth core is Apache-2.0;
+`studio/` and `unsloth_cli/` paths remain blocked per `license_policy.py`.
