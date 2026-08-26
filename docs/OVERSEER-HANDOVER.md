@@ -9,72 +9,67 @@
 ---
 
 <!-- overseer:next role=primary lane=product status=live -->
-## NEXT SESSION — T5 Vault Package Ingest (PRIMARY)
+## NEXT SESSION — T6 Artifact Storage + Durable State (PRIMARY)
 
 **Date:** 2026-08-26  
-**Current position:** T4b Auto **DONE** — BV **`pass`**; `@gpu` real train pending CUDA host before T5 start  
+**Current position:** T5 Auto **DONE** — BV **`pass`**; 147 tests green  
 **Model:** Auto
 
-### What just landed
+### Operator decision (2026-08-26)
+
+CUDA `@gpu` live test and Railway GPU wiring remain deferred to **T8/T9** — not blocking T6 build.
+
+### What just landed (T5)
 
 | Slice | Deliverable |
 | --- | --- |
-| T4b | Real trainer runtime — `gpu_worker.py` stub/real modes, tarball provenance, locked deps |
-| T4b | `requirements.lock` + `DEPENDENCIES.md`; LEGAL-CLOSURE L2, L3, L5, L6, L9 |
-| T4b | 134 tests green (1 `@gpu` skip without CUDA) |
+| T5 | `POST /datasets/{id}/package` — server JWT auth envelope |
+| T5 | Canonical `train.jsonl` write; `datasetHash` = SHA-256 of file bytes |
+| T5 | `vaultScope` metadata; seven-tier `test_t5_package_ingest.py` |
+| T5 | `TRAINING-API-CONTRACT.md` + LEGAL-CLOSURE L16 evidenced |
 
-### THE ONE NEXT STEP — **Model: Auto** (blocked until CUDA `@gpu` green)
-
-**Hard stop:** Run `test_gpu_real_unsloth_train_writes_adapter` on a CUDA host with
-`SCOOLING_LAB_GPU_TRAIN_MODE=real` before starting T5.
+### THE ONE NEXT STEP — **Model: Auto**
 
 | | |
 | --- | --- |
-| **ID** | **T5** |
-| **Branch** | `feat/t5-vault-package-ingest` (create from `main` after T4 merge) |
+| **ID** | **T6** |
+| **Branch** | `feat/t6-artifact-storage` (from `feat/t5-vault-package-ingest` or `main` after merge) |
 | **Repo** | **scooling-lab** |
-| **Read first** | `docs/ROADMAP.md` T5; `docs/T4-TRAINER-SPEC.md` §4 package layout |
+| **Read first** | `docs/ROADMAP.md` T6; `docs/TRAINING-API-CONTRACT.md` retention/download gaps |
 
-### Paste-ready prompt — T5
+### Paste-ready prompt — T6
 
 ```
-Phase T5 — Vault dataset package ingest (scooling-lab).
+Phase T6 — Artifact object storage + durable job store (scooling-lab).
 
 Model: Auto
 Repo: ~/scooling-lab
-Step: T5
-Authority: docs/ROADMAP.md T5; docs/T4-TRAINER-SPEC.md package layout
-
-Prerequisite: CUDA host — @gpu real-train test green (T4 Definition of Done).
-
-Read first: docs/ROADMAP.md T5; docs/TRAINING-API-CONTRACT.md.
+Branch: feat/t6-artifact-storage
+Step: T6
+Authority: docs/ROADMAP.md T6
 
 Deliverables:
-1. POST /datasets/{id}/package — server-to-server auth envelope
-2. Write JSONL to SCOOLING_LAB_PACKAGE_ROOT; datasetHash = SHA-256 of canonical bytes
-3. Seven-tier tests; no browser-supplied paths
-4. Update TRAINING-API-CONTRACT.md + LEGAL-CLOSURE as evidenced
-5. Run /build-verification-review → pass before ROADMAP T5 → DONE
-6. Feature-branch commit; push; draft PR (not to GitHub main)
+1. Require SCOOLING_LAB_STATE_PATH in production
+2. Upload adapter tarball to object storage (S3 / R2 / volume)
+3. GET .../artifacts/{id}/download — signed URL, server auth only
+4. Retention sweep deletes storage + metadata per policy
+5. Seven-tier tests; update TRAINING-API-CONTRACT.md
+6. Run /build-verification-review → pass before ROADMAP T6 → DONE
+7. Feature-branch commit; push; draft PR (not to GitHub main)
 
 Governance sync: update docs/ROADMAP.md + docs/OVERSEER-HANDOVER.md on completion.
 ```
 
 ---
 
-### Paste-ready prompt (archived — T4b Auto)
+### Paste-ready prompt (archived — T5 Auto)
 
 ```
-Phase T4b — Real Trainer Runtime build (scooling-lab).
+Phase T5 — Vault dataset package ingest (scooling-lab).
 
 Model: Auto
-Repo: ~/scooling-lab
-Branch: feat/t4-unsloth-trainer
-Step: T4b
-Authority: docs/T4-TRAINER-SPEC.md (frozen — no redesign)
-
-Status: DONE — BV pass (2026-08-26); 134 tests green; @gpu skip without CUDA.
-CUDA gate remains before T5.
+Status: DONE — BV pass (2026-08-26); 147 tests green; @gpu skip without CUDA.
+Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 ```
 
 ---
@@ -84,7 +79,7 @@ CUDA gate remains before T5.
 | Order | Phase | Repo |
 | --- | --- | --- |
 | 1 | T4 Real trainer | scooling-lab — **DONE** |
-| 2 | T5 Vault package ingest | scooling-lab + scooling |
+| 2 | T5 Vault package ingest | scooling-lab — **DONE** (Scooling export → T7) |
 | 3 | T6 Artifacts + durable state | scooling-lab |
 | 4 | T-CREDIT Pack measure / reserve / debit | scooling + Muse Hub |
 | 5 | T7 Scooling train UI + backend | scooling |
@@ -102,32 +97,32 @@ CUDA gate remains before T5.
 | Item | Value |
 | --- | --- |
 | Repo | `scooling-lab` |
-| Branch | `feat/t4-unsloth-trainer` (T4b build) |
+| Branch | `feat/t5-vault-package-ingest` |
 | Overseer Kit | **live** — `initialized: true`, `kit_version: 0.1.0`, `footprint_self_integrity: ok` |
 | Handover | `docs/OVERSEER-HANDOVER.md` |
 | Roadmap | `docs/ROADMAP.md` |
-| T4 freeze | `docs/T4-TRAINER-SPEC.md` — **`pass`** (`ok check-ok`, 2026-08-26) |
-| T4b BV | **`pass`** (2026-08-26) |
-| Tests | 134 passed, 1 skipped (`@gpu` — no CUDA in CI) |
-| Runtime deps | Locked in `requirements.lock`; GPU host install only |
-| GPU worker | **T4b** — stub/real Unsloth QLoRA; tarball `artifactHash` |
+| T5 BV | **`pass`** — `docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md` |
+| Tests | 147 passed, 1 skipped (`@gpu` — no CUDA in CI) |
+| Package ingest | Server JWT + canonical JSONL + content `datasetHash` |
+| GPU worker | T4b stub/real; provenance uses file hash after T5 |
 | Pack credits | Muse Hub packs exist; **T-CREDIT not wired** |
-| Legal | L2, L3, L5, L6, L9 **DONE**; others open per `LEGAL-CLOSURE.md` |
-| Products | Scooling / Knowtation / YouTube train paths **not wired** |
+| Legal | L2, L3, L5, L6, L9, L16 **DONE**; others open per `LEGAL-CLOSURE.md` |
+| Products | Scooling / Knowtation / YouTube train paths **not wired** (T7+) |
 
 ### Governance gates checklist
 
 - [x] **Overseer Kit installed** — 2026-08-26
 - [x] **T4a freeze** — `docs/T4-TRAINER-SPEC.md` + `ok check-ok` **`pass`**
 - [x] **T4b build** — `/build-verification-review` **`pass`** (2026-08-26)
-- [ ] **CUDA `@gpu`** — real train on GPU host before T5
+- [x] **T5 build** — `/build-verification-review` **`pass`** (2026-08-26)
+- [ ] **CUDA `@gpu`** — deferred to T8/T9 (operator 2026-08-26)
 
 ---
 
 ## Finish-line checklist (master)
 
-- [x] **T4** Real Unsloth train → adapter files (build); CUDA verify before T5
-- [ ] **T5** Vault package ingest + content hash
+- [x] **T4** Real Unsloth train → adapter files (build); CUDA verify before production
+- [x] **T5** Vault package ingest + content hash (Lab); Scooling export → T7
 - [ ] **T6** Durable state + object storage + download
 - [ ] **T-CREDIT** Muse Hub pack measure / reserve / debit / refund
 - [ ] **T7** Scooling UI + backend train flow
@@ -145,7 +140,8 @@ CUDA gate remains before T5.
 | Branch | Purpose | PR |
 | --- | --- | --- |
 | `main` | Stable contract + tests | — |
-| `feat/t4-unsloth-trainer` | T4b real trainer runtime | draft PR → `main` (not feature→main per SD-14) |
+| `feat/t5-vault-package-ingest` | T5 vault package ingest | draft PR → `main` (not feature→main per SD-14) |
+| `feat/t4-unsloth-trainer` | T4b real trainer runtime | prior draft PR |
 
 ---
 
@@ -158,3 +154,5 @@ CUDA gate remains before T5.
 | 2026-08-26 (final) | LEGAL-CLOSURE tracker; build order; T4a/T4b prompts; confirmed no skips |
 | 2026-08-26 | Overseer Kit installed; T4-TRAINER-SPEC freeze authored |
 | 2026-08-26 | **T4b DONE** — gpu_worker stub/real, lockfile, 134 tests, BV pass |
+| 2026-08-26 | Operator: defer CUDA/Railway live test; continue T5+ then verify at T8/T9 |
+| 2026-08-26 | **T5 DONE** — package ingest API, content datasetHash, 147 tests, BV pass |

@@ -27,10 +27,10 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | | |
 | --- | --- |
 | **Overseer Kit** | **Live** — `initialized: true`, `kit_version: 0.1.0`, `footprint_self_integrity: ok` |
-| **Tests** | **134/134** green (133 run + 1 `@gpu` skip without CUDA) |
-| **GPU worker** | **T4b** — stub/real train modes; adapter tarball + provenance hash |
-| **THE ONE NEXT STEP** | **T5 Auto** — vault package ingest (do not start until CUDA `@gpu` green) |
-| **Finish-line** | T5 → T9 + T-CREDIT + T-LEGAL + T-POLICY — no skips (see build queue) |
+| **Tests** | **147/147** green (146 run + 1 `@gpu` skip without CUDA) |
+| **GPU worker** | **T4b** — stub/real train modes; **T5** content `datasetHash` |
+| **THE ONE NEXT STEP** | **T6 Auto** — artifact storage + durable job store |
+| **Finish-line** | T6 → T9 + T-CREDIT + T-LEGAL + T-POLICY — no skips (see build queue) |
 
 ---
 
@@ -42,9 +42,9 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | T2 | Auto | **DONE** | Training job API contract, provenance, retention, deletion |
 | T3 | Auto | **DONE** | Dataset review lifecycle, queue, cancel/retry, persistence hook |
 | GPU-S0 | Auto | **DONE** | Isolated GPU worker subprocess — replaced by T4b |
-| **T4** | **Thinking → Auto** | **DONE** (T4a freeze + T4b BV **`pass`**; `@gpu` on CUDA before T5) | Real Unsloth fine-tune → loadable adapter weights |
-| T5 | Auto | **NEXT** | Vault dataset package ingest (content hash, server-side auth) |
-| T6 | Auto | QUEUED | Artifact object storage + signed download + durable job store |
+| **T4** | **Thinking → Auto** | **DONE** (T4a freeze + T4b BV **`pass`**; `@gpu` on CUDA before production) | Real Unsloth fine-tune → loadable adapter weights |
+| **T5** | Auto | **DONE** (BV **`pass`** 2026-08-26; CUDA `@gpu` deferred to T8/T9) | Vault dataset package ingest (content hash, server-side auth) |
+| T6 | Auto | **NEXT** | Artifact object storage + signed download + durable job store |
 | **T-CREDIT** | Auto | QUEUED | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
 | T7 | Auto | QUEUED | Scooling app integration (export, UI, job polling, model registration) |
 | T-KNOW | Auto | QUEUED | Knowtation vault export → same training pipeline |
@@ -61,7 +61,6 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | Stub | Location | Replaced by |
 | --- | --- | --- |
 | GPU worker placeholder (hashes only, no train) | `gpu_worker.py` | **T4b** — stub/real train + tarball |
-| `package_dataset_hash` id-only (no file bytes) | `gpu_worker.py` | T5 content SHA-256 |
 | Fake / Wave A worker in prod path | `fake_worker.py` | T9 dev-only (`SCOOLING_LAB_DEV_FIXTURES=1`) |
 | Unsloth evidence-only (not installed) | `requirements.lock` | **T4b** lockfile + BOM row |
 | In-memory / optional persistence default | `api.main()` | T6 `SCOOLING_LAB_STATE_PATH` required in prod |
@@ -85,12 +84,22 @@ What exists today (134 tests green; 1 `@gpu` skip without CUDA):
 
 ---
 
-## NEXT — T5: Vault Dataset Package Ingest
+## DONE — T5: Vault Dataset Package Ingest
 
-**Hard stop:** Do not start T5 until `@gpu` real-train test is green on a CUDA host
-(`SCOOLING_LAB_GPU_TRAIN_MODE=real`).
+- `POST /datasets/{id}/package` — HS256 Bearer JWT (`SCOOLING_LAB_INGEST_AUTH_SECRET`)
+- Canonical `train.jsonl` under `SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/`
+- `datasetHash` = SHA-256 of canonical file bytes (GPU provenance)
+- `vaultScope` metadata: `all` / `folder` / `tag` / `selection` / `youtube` (ids only)
+- Seven-tier tests in `tests/test_t5_package_ingest.py`
+- BV: `docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md` **`pass`**
 
-**Goal:** Server-side package ingest replaces id-only `datasetHash` with content SHA-256.
+**Operator note:** CUDA `@gpu` live test still deferred to T8/T9 before production GPU train.
+
+---
+
+## NEXT — T6: Artifact Storage And Durable State
+
+**Goal:** Restart-survivable queue; object storage upload; signed artifact download.
 
 ---
 
@@ -132,20 +141,9 @@ with loadable adapter on disk.
 
 ---
 
-## QUEUED — T5: Vault Dataset Package Ingest
+## RETIRED — T5 queue detail (Lab **DONE** 2026-08-26; Scooling export → **T7**)
 
-### Scooling Lab
-
-1. `POST /datasets/{id}/package` — server-to-server auth (JWT from Scooling backend).
-2. Stream/write JSONL to package root; `datasetHash` = SHA-256 of canonical bytes.
-3. Scope metadata: `vaultScope` (`all`, `folder`, `tag`, `selection`, `youtube`) — ids only on wire.
-
-### Scooling app
-
-1. Vault export service → training JSONL for selected scope.
-2. Redaction hook (implement pass-through minimum; full rules in T-POLICY).
-
-**Definition of Done:** Real vault export lands as `own:{userId}:{version}`; provenance hash matches file.
+Lab deliverables shipped in **DONE — T5** above. Remaining Scooling-app vault export wiring is **T7**.
 
 ---
 

@@ -34,7 +34,7 @@ shell commands, callback URLs, local file paths, or Unsloth Studio/CLI component
 | Gap | Phase |
 | --- | --- |
 | Real weight training / Unsloth install | T4 |
-| Vault package bodies (server-side ingest only) | T5 |
+| Vault package bodies (server-side ingest only) | T5 **DONE** |
 | Pack credit measure / reserve / debit | T-CREDIT (Scooling / Muse Hub) |
 | Legal checklist closure | T-LEGAL (`docs/LEGAL-CLOSURE.md`) |
 

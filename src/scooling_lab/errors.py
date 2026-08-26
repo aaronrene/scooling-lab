@@ -18,6 +18,7 @@ class ErrorCode(str, Enum):
     CONFLICT = "CONFLICT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DATASET_NOT_APPROVED = "DATASET_NOT_APPROVED"
+    UNAUTHORIZED = "UNAUTHORIZED"
 
 
 SAFE_ERROR_MESSAGES: dict[ErrorCode, str] = {
@@ -30,6 +31,7 @@ SAFE_ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.CONFLICT: "The request conflicts with an existing training job.",
     ErrorCode.INTERNAL_ERROR: "The training service could not complete the request.",
     ErrorCode.DATASET_NOT_APPROVED: "The dataset has not been approved for job submission.",
+    ErrorCode.UNAUTHORIZED: "The request is not authorized for this training operation.",
 }
 
 

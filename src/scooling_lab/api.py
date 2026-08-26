@@ -16,6 +16,7 @@ from scooling_lab.store import TrainingJobStore
 
 
 MAX_BODY_BYTES = 16_384
+MAX_PACKAGE_BODY_BYTES = 4_194_304
 JOB_ID_RE = re.compile(r"^job_[a-f0-9]{24}$")
 ARTIFACT_ID_RE = re.compile(r"^artifact_[a-f0-9]{24}$")
 DATASET_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{3,96}$")
@@ -111,6 +112,18 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
                 _sid = submit_dataset_id
                 self._handle_json(lambda: service.submit_dataset_for_review(_sid))
                 return
+            package_dataset_id = parse_dataset_route(path, "package")
+            if package_dataset_id is not None:
+                _pid = package_dataset_id
+                auth_header = self.headers.get("Authorization", "")
+                self._handle_json(
+                    lambda: service.ingest_dataset_package(
+                        _pid,
+                        self._read_json(MAX_PACKAGE_BODY_BYTES),
+                        auth_header,
+                    )
+                )
+                return
             self._send_error(ApiError(ErrorCode.NOT_FOUND, 404))
 
         def do_GET(self) -> None:
@@ -160,12 +173,12 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
 
             return
 
-        def _read_json(self) -> dict[str, object]:
+        def _read_json(self, max_bytes: int = MAX_BODY_BYTES) -> dict[str, object]:
             content_length = self.headers.get("Content-Length")
             if content_length is None:
                 raise ApiError(ErrorCode.MALFORMED_JSON, 400)
             length = int(content_length)
-            if length <= 0 or length > MAX_BODY_BYTES:
+            if length <= 0 or length > max_bytes:
                 raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
             try:
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))

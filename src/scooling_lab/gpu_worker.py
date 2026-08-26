@@ -85,16 +85,14 @@ def gpu_train_mode() -> str:
 
 
 def package_dataset_hash(dataset_id: str) -> str:
-    """Return a content-free hash of an approved ``own:*`` package id.
-
-    Private note bodies never enter this hash — only the package identifier.
-    T5 replaces this with SHA-256 of canonical ``train.jsonl`` bytes.
-    """
+    """Return SHA-256 of canonical ``train.jsonl`` bytes for an ``own:*`` package."""
 
     if not is_own_data_dataset_id(dataset_id):
         raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
-    payload = f"scooling-lab-gpu-package:{dataset_id}"
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    train_path = resolve_package_dir(dataset_id) / "train.jsonl"
+    if not train_path.is_file():
+        raise ApiError(ErrorCode.INTERNAL_ERROR, 500)
+    return hash_file_bytes(train_path)
 
 
 def gpu_training_config_hash(

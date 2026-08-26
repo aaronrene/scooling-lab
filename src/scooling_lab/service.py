@@ -14,6 +14,7 @@ from scooling_lab.contracts import (
     require_job_id,
 )
 from scooling_lab.dataset_review import (
+    DatasetStatus,
     DatasetStore,
     dataset_shape_from_registration,
     validate_review_request,
@@ -21,7 +22,8 @@ from scooling_lab.dataset_review import (
 from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.fake_worker import FakeTrainingWorker
 from scooling_lab.gpu_worker import IsolatedGpuWorker
-from scooling_lab.store import TrainingJobRecord, TrainingJobStore
+from scooling_lab.package_ingest import parse_package_ingest_request, write_package_files
+from scooling_lab.server_auth import verify_ingest_auth
 
 
 class TrainingApiService:
@@ -92,6 +94,32 @@ class TrainingApiService:
         """Return the current review status for one dataset."""
 
         return self._dataset_store.get(dataset_id).to_public_dict()
+
+    def ingest_dataset_package(
+        self,
+        dataset_id: str,
+        payload: dict[str, object],
+        authorization_header: str,
+    ) -> dict[str, object]:
+        """Write canonical training JSONL for a registered own:* dataset (server auth only)."""
+
+        verify_ingest_auth(authorization_header, dataset_id)
+        record = self._dataset_store.get(dataset_id)
+        if record.status == DatasetStatus.REJECTED:
+            raise ApiError(ErrorCode.CONFLICT, 409)
+        rows, vault_scope, row_count = parse_package_ingest_request(payload)
+        _, dataset_hash = write_package_files(
+            dataset_id,
+            rows,
+            vault_scope,
+            row_count,
+        )
+        return {
+            "datasetId": dataset_id,
+            "datasetHash": dataset_hash,
+            "rowCount": row_count,
+            "vaultScope": vault_scope,
+        }
 
     # ------------------------------------------------------------------- queue
 

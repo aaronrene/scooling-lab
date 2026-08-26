@@ -32,6 +32,7 @@ GPU runtime deps are locked in `requirements.lock` for the worker host only.
 - `POST /datasets`: register a dataset id for review.
 - `POST /datasets/{id}/submit`: submit registered dataset for review.
 - `POST /datasets/{id}/review`: approve or reject.
+- `POST /datasets/{id}/package`: server-auth package ingest (T5).
 - `GET /datasets/{id}`: dataset status (content-free).
 
 ## createTrainingJob Request
@@ -300,8 +301,59 @@ provenance record is ever stored.
 
 - `DATASET_NOT_APPROVED` — the dataset referenced in a job creation request has not
   completed the review lifecycle or has been rejected.  Returns HTTP 403.
+- `UNAUTHORIZED` — package ingest or other server-auth route lacked a valid Bearer
+  JWT envelope.  Returns HTTP 401.
 
-### Slice 9 Fixture Shapes
+### T5: Vault package ingest (`POST /datasets/{id}/package`)
+
+Server-to-server only. Browsers must not call this route directly; Scooling backend
+mints a short-lived HS256 JWT using `SCOOLING_LAB_INGEST_AUTH_SECRET`.
+
+**Authorization:** `Authorization: Bearer <jwt>` with claims:
+
+- `iss` — must match `SCOOLING_LAB_INGEST_AUTH_ISSUER` (default `scooling`)
+- `sub` — server caller label (safe identifier)
+- `datasetId` — must equal the `{id}` path segment
+- `iat` / `exp` — bounded clock skew (60s)
+
+**Request body** (no paths, URLs, callbacks, or shell fields):
+
+```json
+{
+  "rows": [
+    { "instruction": "...", "input": "", "output": "..." }
+  ],
+  "vaultScope": { "kind": "all" },
+  "rowCount": 1
+}
+```
+
+- `rows` — 1..10000 training rows; each row has exactly `instruction`, `input`,
+  `output` string fields (bounded length; path/URL patterns refused).
+- `vaultScope` — content-free scope metadata: `kind` is one of `all`, `folder`,
+  `tag`, `selection`, `youtube`. Non-`all` kinds carry id lists only (`folderIds`,
+  `tagIds`, `noteIds`, optional `youtubeIds`) — never note bodies.
+- `rowCount` — optional; when present must equal `len(rows)`.
+
+**Write path:** canonical UTF-8 JSONL is written to
+`SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/train.jsonl` with companion
+`manifest.json`. `datasetHash` in the response and GPU provenance is SHA-256 of
+the canonical `train.jsonl` file bytes (newline-terminated JSONL).
+
+**Response** (content-free — no filesystem paths):
+
+```json
+{
+  "datasetId": "own:user123:v1",
+  "datasetHash": "<sha256-hex>",
+  "rowCount": 1,
+  "vaultScope": { "kind": "all" }
+}
+```
+
+Dataset must be registered and not `rejected`. Re-ingest replaces the on-disk
+package atomically.
+
 
 The following shapes are stable contract fixtures for the Slice 9 submission UI:
 

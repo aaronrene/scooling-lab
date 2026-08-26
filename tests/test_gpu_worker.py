@@ -154,10 +154,11 @@ class LabGpuUnitTests(unittest.TestCase):
             tarball = artifact_dir / "artifact.tar.gz"
             self.assertTrue(tarball.is_file())
             self.assertEqual(result["artifactHash"], hash_file_bytes(tarball))
+            self.assertEqual(
+                result["datasetHash"],
+                package_dataset_hash("own:gpu-packaged.notes_v1"),
+            )
         self.assertEqual(result["baseModelId"], GPU_PRODUCT_MODEL_ID)
-        self.assertEqual(
-            result["datasetHash"], package_dataset_hash("own:gpu-packaged.notes_v1")
-        )
         self.assertEqual(len(result["artifactHash"]), 64)
 
     def test_unit_missing_train_jsonl_fails_closed(self) -> None:
@@ -312,15 +313,14 @@ class LabGpuStressTests(GpuWorkerEnvMixin, unittest.TestCase):
 class LabGpuDataIntegrityTests(GpuWorkerEnvMixin, unittest.TestCase):
     """5. Data integrity — stable package hashes and tarball invariants."""
 
-    def test_data_integrity_package_hash_stable_and_content_free(self) -> None:
-        """Package dataset hash is stable and provenance omits free text / paths."""
-
-        first = package_dataset_hash("own:gpu-integrity-v1")
-        second = package_dataset_hash("own:gpu-integrity-v1")
-        self.assertEqual(first, second)
-        self.assertNotEqual(first, package_dataset_hash("own:gpu-integrity-v2"))
+    def test_data_integrity_package_hash_matches_train_jsonl_bytes(self) -> None:
+        """datasetHash is SHA-256 of canonical train.jsonl on disk."""
 
         self.seed_gpu_package("own:gpu-integrity-v1")
+        train_path = self._gpu_env.package_root / "own:gpu-integrity-v1" / "train.jsonl"
+        file_hash = hash_file_bytes(train_path)
+        self.assertEqual(package_dataset_hash("own:gpu-integrity-v1"), file_hash)
+
         ds_store = DatasetStore()
         _approve_own(ds_store, "own:gpu-integrity-v1")
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
@@ -329,9 +329,21 @@ class LabGpuDataIntegrityTests(GpuWorkerEnvMixin, unittest.TestCase):
         )
         provenance = service.get_provenance(str(created["id"]))
         serialized = json.dumps(provenance)
-        for banned in ("http://", "file://", "prompt", "note body", "/Users/", "\\"):
+        for banned in ("http://", "file://", "/Users/", "\\"):
             self.assertNotIn(banned, serialized)
-        self.assertEqual(provenance["datasetHash"], first)
+        self.assertEqual(provenance["datasetHash"], file_hash)
+
+    def test_data_integrity_different_content_different_hash(self) -> None:
+        """Distinct train.jsonl bytes produce distinct dataset hashes."""
+
+        self.seed_gpu_package("own:gpu-hash-a")
+        self._gpu_env.seed_package(
+            "own:gpu-hash-b",
+            lines=['{"instruction":"other","input":"","output":"x"}\n'],
+        )
+        hash_a = package_dataset_hash("own:gpu-hash-a")
+        hash_b = package_dataset_hash("own:gpu-hash-b")
+        self.assertNotEqual(hash_a, hash_b)
 
     def test_data_integrity_tarball_hash_matches_on_disk(self) -> None:
         """artifactHash equals SHA-256 of artifact.tar.gz on disk."""

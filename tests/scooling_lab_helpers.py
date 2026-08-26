@@ -59,12 +59,17 @@ class GpuWorkerTestEnv:
             shutil.copytree(FIXTURE_PACKAGE_ROOT / dataset_id, target)
             return
         target.mkdir(parents=True, exist_ok=True)
-        payload = lines or [
-            '{"instruction":"test","input":"","output":"ok"}\n',
-        ]
-        (target / "train.jsonl").write_text("".join(payload), encoding="utf-8")
+        if lines is not None:
+            (target / "train.jsonl").write_text("".join(lines), encoding="utf-8")
+            row_count = len(lines)
+        else:
+            from scooling_lab.package_ingest import canonical_train_jsonl_bytes
+
+            rows = [{"instruction": "test", "input": "", "output": "ok"}]
+            (target / "train.jsonl").write_bytes(canonical_train_jsonl_bytes(rows))
+            row_count = len(rows)
         (target / "manifest.json").write_text(
-            json.dumps({"datasetId": dataset_id, "rowCount": len(payload)}),
+            json.dumps({"datasetId": dataset_id, "rowCount": row_count}),
             encoding="utf-8",
         )
 
@@ -107,3 +112,41 @@ def valid_gpu_payload(
             "dryRun": False,
         },
     }
+
+
+def valid_package_ingest_payload(
+    *,
+    rows: list[dict[str, str]] | None = None,
+    vault_scope: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Return a valid server-auth package ingest payload."""
+
+    row_list = rows or [{"instruction": "vault note", "input": "", "output": "summary"}]
+    scope = vault_scope or {"kind": "all"}
+    return {
+        "rows": row_list,
+        "vaultScope": scope,
+        "rowCount": len(row_list),
+    }
+
+
+def ingest_authorization_header(
+    dataset_id: str,
+    *,
+    subject: str = "scooling.server",
+    secret: str = "test-ingest-secret",
+) -> str:
+    """Mint a Bearer token for package ingest tests."""
+
+    from scooling_lab.server_auth import sign_ingest_jwt
+
+    prior = os.environ.get("SCOOLING_LAB_INGEST_AUTH_SECRET")
+    os.environ["SCOOLING_LAB_INGEST_AUTH_SECRET"] = secret
+    try:
+        token = sign_ingest_jwt(dataset_id, subject, secret=secret)
+    finally:
+        if prior is None:
+            os.environ.pop("SCOOLING_LAB_INGEST_AUTH_SECRET", None)
+        else:
+            os.environ["SCOOLING_LAB_INGEST_AUTH_SECRET"] = prior
+    return f"Bearer {token}"
