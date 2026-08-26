@@ -7,38 +7,60 @@
 | **DONE** | Delivered on `main`; seven-tier tests green |
 | **NEXT** | The one active build target |
 | **QUEUED** | Ordered; start only after the row above is DONE |
+| **STUB** | Exists today but must be replaced — not a finish-line deliverable |
 
-Solo-operator mode: no user traffic, no paid-GPU pilot gates, no “pre-private-data” hold points.
-Keep AGPL boundaries and secret hygiene; skip ceremony that exists only for scale we do not have yet.
+**Finish-line policy:** 100% operational. No parked phases, no “skip because no users,” no placeholder
+workers in production. Muse Hub pack credits, legal closure, and every product surface (Scooling,
+Knowtation, YouTube) are **in scope and queued** — not deferred.
 
 ---
 
-## Build Queue
+## Build Queue (master)
 
 | Phase | Model | Status | Deliverable |
 | --- | --- | --- | --- |
 | T0 | Auto | **DONE** | License + dependency BOM (`DEPENDENCIES.md`, AGPL path block) |
 | T2 | Auto | **DONE** | Training job API contract, provenance, retention, deletion |
 | T3 | Auto | **DONE** | Dataset review lifecycle, queue, cancel/retry, persistence hook |
-| GPU-S0 | Auto | **DONE** | Isolated GPU worker subprocess + content-free placeholder completion |
-| **T4** | **Thinking → Auto** | **NEXT** | Real Unsloth fine-tune in `gpu_worker` → adapter weights on disk |
-| T5 | Auto | QUEUED | Server-side dataset package ingest (vault export → hashed JSONL) |
+| GPU-S0 | Auto | **STUB** | Isolated GPU worker subprocess — **placeholder only** (no weights) |
+| **T4** | **Thinking → Auto** | **NEXT** | Real Unsloth fine-tune → loadable adapter weights |
+| T5 | Auto | QUEUED | Vault dataset package ingest (content hash, server-side auth) |
 | T6 | Auto | QUEUED | Artifact object storage + signed download + durable job store |
+| **T-CREDIT** | Auto | QUEUED | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
 | T7 | Auto | QUEUED | Scooling app integration (export, UI, job polling, model registration) |
-| T8 | Auto | QUEUED | GPU deployment lane (Railway GPU or equivalent) + env secrets |
-| T9 | Auto | QUEUED | End-to-end vault → train → use model in Scooling; fake worker dev-only |
+| T-KNOW | Auto | QUEUED | Knowtation vault export → same training pipeline |
+| T-YT | Auto | QUEUED | YouTube-sourced vault content → training export (where user opted in) |
+| T8 | Auto | QUEUED | GPU deployment lane + long-running worker queue |
+| **T-LEGAL** | Operator + Auto | QUEUED | Close every item in `LEGAL-REVIEW-CHECKLIST.md` with evidence |
+| **T-POLICY** | Thinking → Auto | QUEUED | Consent, scope, redaction, retention/export — wired in product |
+| T9 | Auto | QUEUED | E2E all surfaces; remove production stubs; `CROSS-REPO-STATUS` operational |
 
 ---
 
-## DONE — T0 / T2 / T3 / GPU-S0
+## STUB inventory (must hit zero at T9)
+
+| Stub | Location | Replaced by |
+| --- | --- | --- |
+| GPU worker placeholder (hashes only, no train) | `gpu_worker.py` | T4 real Unsloth QLoRA |
+| `package_dataset_hash` id-only (no file bytes) | `gpu_worker.py` | T5 content SHA-256 |
+| Fake / Wave A worker in prod path | `fake_worker.py` | T9 dev-only (`SCOOLING_LAB_DEV_FIXTURES=1`) |
+| Unsloth evidence-only (not installed) | `requirements.lock` | T4 lockfile + BOM row |
+| In-memory / optional persistence default | `api.main()` | T6 `SCOOLING_LAB_STATE_PATH` required in prod |
+| GPU subprocess 30s timeout | `gpu_worker.py` | T8 job-scoped timeout from pack-estimated duration |
+| No pack credit gate on job create | — | T-CREDIT Hub integration |
+| Billing “lives elsewhere” doc-only | `SECURITY.md`, README | T-CREDIT implemented end-to-end |
+| Legal checklist unchecked | `LEGAL-REVIEW-CHECKLIST.md` | T-LEGAL all boxes + tests |
+| Scooling / Knowtation / YouTube unwired | cross-repo | T7, T-KNOW, T-YT |
+
+---
+
+## DONE — T0 / T2 / T3
 
 What exists today (127 tests green):
 
 - HTTP API: jobs, artifacts, provenance, datasets, queue (`src/scooling_lab/api.py`)
 - Dataset lifecycle: `registered → pending_review → approved | rejected`
-- Workers:
-  - Wave A fake worker — synthetic fixture, no real training
-  - GPU worker — isolated subprocess, **provenance only**, no weights, no vault bodies
+- Workers: fake worker (synthetic fixture); GPU worker subprocess (**stub** — provenance only)
 - Docker + Railway deploy shell (API only, stdlib runtime)
 - Unsloth recorded as evidence-only; **not installed**
 
@@ -50,122 +72,208 @@ What exists today (127 tests green):
 
 ### T4a — Thinking (freeze spec)
 
-1. Pick base model id (e.g. `meta-llama/Llama-3.2-3B-Instruct` or smaller QLoRA target).
+1. Pick base model id and confirm **HF / model license** acceptance path (see Legal blocks below).
 2. Lock **Unsloth core only** (`unsloth` Apache paths) in `requirements.lock`; update BOM.
-3. Define training package on-disk layout the worker reads (path from env / server envelope, never browser).
-4. Define artifact output layout (adapter dir, `config.json`, tokenizer files).
-5. Extend provenance: `artifactHash` = hash of output tarball; keep response content-free.
+3. Define training package on-disk layout (`SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/`).
+4. Define artifact output layout (`SCOOLING_LAB_ARTIFACT_ROOT/{jobId}/`).
+5. Provenance: `artifactHash` = hash of output tarball; HTTP responses stay content-free.
 
 ### T4b — Auto (build)
 
-1. Add runtime deps: `unsloth`, `torch`, `transformers`, `datasets`, `peft` (allowlisted licenses only).
-2. Replace placeholder logic in `gpu_worker.py` with Unsloth QLoRA fine-tune loop.
-3. Read training JSONL from `SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/train.jsonl` (or envelope field set server-side only).
-4. Write artifacts to `SCOOLING_LAB_ARTIFACT_ROOT/{jobId}/`.
-5. Fail job → `failed` with safe error code; never log row text.
-6. Seven-tier tests: mock GPU path for CI; optional `@gpu` integration test marked skip without CUDA.
-7. Update `TRAINING-API-CONTRACT.md` + `DEPENDENCIES.md`.
+1. Add runtime deps: `unsloth`, `torch`, `transformers`, `datasets`, `peft` (allowlisted only).
+2. Replace placeholder logic in `gpu_worker.py` with Unsloth QLoRA fine-tune.
+3. Read training JSONL from env-driven package root — never from browser JSON.
+4. Write loadable adapter files; fail → `failed` with safe error code.
+5. Seven-tier tests; GPU integration `@gpu` skip without CUDA.
+6. Update `TRAINING-API-CONTRACT.md` + `DEPENDENCIES.md`.
 
-**Definition of Done:** Local CUDA run (or documented GPU box) completes `own:*` + `scooling-lab-gpu-personal-v1` + `dryRun: false` and leaves loadable adapter files on disk.
+**Definition of Done:** CUDA host completes `own:*` + `scooling-lab-gpu-personal-v1` + `dryRun: false`
+with loadable adapter on disk.
 
 ---
 
 ## QUEUED — T5: Vault Dataset Package Ingest
 
-**Goal:** User vault content reaches the worker as an approved, hashed training package.
+### Scooling Lab
 
-### Scooling Lab (`scooling-lab`)
+1. `POST /datasets/{id}/package` — server-to-server auth (JWT from Scooling backend).
+2. Stream/write JSONL to package root; `datasetHash` = SHA-256 of canonical bytes.
+3. Scope metadata: `vaultScope` (`all`, `folder`, `tag`, `selection`, `youtube`) — ids only on wire.
 
-1. `POST /datasets/{id}/package` — **server-to-server auth only** (shared secret or JWT from Scooling backend).
-2. Accept bounded JSONL upload or streaming write to package root; reject browser-origin calls.
-3. `datasetHash` = SHA-256 of canonical JSONL bytes (replace id-only hash for real packages).
-4. Auto-approve owner packages on successful ingest (solo mode); keep review enum for later policy.
-5. Scope metadata in registration: `vaultScope` enum (`all`, `folder`, `tag`, `selection`) — ids only, no echo of note titles in API.
+### Scooling app
 
-### Scooling app (`scooling` repo — cross-repo)
+1. Vault export service → training JSONL for selected scope.
+2. Redaction hook (implement pass-through minimum; full rules in T-POLICY).
 
-1. Vault export service: serialize selected notes → training JSONL (`instruction` / `input` / `output` or chat turns).
-2. Redaction hook (empty pass-through OK for v1 solo).
-3. Call Lab package ingest after user confirms scope in UI.
-
-**Definition of Done:** Export from a test vault in Scooling lands as `own:{userId}:{packageVersion}` on disk; hash in provenance matches file bytes.
+**Definition of Done:** Real vault export lands as `own:{userId}:{version}`; provenance hash matches file.
 
 ---
 
 ## QUEUED — T6: Artifact Storage And Durable State
 
-**Goal:** Survive restarts; deliver model files back to Scooling.
+1. Require `SCOOLING_LAB_STATE_PATH` in production.
+2. Upload adapter tarball to object storage (S3 / R2 / volume).
+3. `GET .../artifacts/{id}/download` — signed URL, server auth only.
+4. Retention sweep deletes storage + metadata per policy.
 
-1. Wire `TrainingJobStore(persistence_path=...)` in production (`SCOOLING_LAB_STATE_PATH`).
-2. Upload completed adapter tarball to object storage (S3 / R2 / Railway volume).
-3. `GET /training/jobs/{id}/artifacts/{artifactId}/download` — short-lived signed URL, server auth only.
-4. Retention sweep deletes object storage + provenance per existing policy.
-5. Replace in-memory-only assumptions in deploy docs.
+**Definition of Done:** Restart-survivable queue; succeeded artifact downloadable.
 
-**Definition of Done:** Kill API process mid-queue; restart; job state intact; succeeded job artifact downloadable once.
+---
+
+## QUEUED — T-CREDIT: Muse Hub Pack Credits
+
+**Why this is not skipped:** Packs and a credit pool already exist in Muse Hub. Training must **measure
+cost, reserve credits from the pool, debit on success, and refund on cancel/fail** — same as other
+pack-gated features.
+
+### Scooling / Muse Hub (cross-repo)
+
+1. Define **training pack SKU** and credit unit (e.g. GPU-seconds, tokens trained, or flat per job tier).
+2. **Pre-flight estimate** API: dataset row count + model + epochs → credit quote shown in UI.
+3. **Reserve** credits on `createTrainingJob` (idempotent with job idempotency key).
+4. **Capture** debit when job → `succeeded`; **release** reserve on `failed` / `cancelled`.
+5. Insufficient pool balance → refuse job with stable error before GPU starts.
+6. Audit row: job id, pack id, credits reserved/captured, timestamp (content-free).
+
+### Scooling Lab
+
+1. Accept `packReservationId` or equivalent in server-signed job envelope (not browser-forged).
+2. Refuse `running` transition if reservation invalid or expired.
+3. Report metered usage (wall seconds, optional token counts) back to Hub on completion.
+
+**Definition of Done:** Train flow debits the correct pack; cancel refunds; zero balance blocks queue.
 
 ---
 
 ## QUEUED — T7: Scooling Product Integration
 
-**Goal:** A Scooling user can choose vault scope and start training from the app.
+1. **Train** UI: vault scope picker (all / folders / tags / notes).
+2. Consent toggle + pack credit quote (T-POLICY copy).
+3. Server-side: register dataset → upload package → reserve credits → create job.
+4. Job status, cancel, retry; model registry on success.
 
-### Scooling app UI + backend
+**Definition of Done:** Scooling user trains on chosen vault scope; model in picker.
 
-1. **Train** entry: scope picker (all vault / folders / tags / hand-picked notes).
-2. Consent copy + single toggle (solo v1 — no multi-tenant billing gate).
-3. Create dataset registration + package upload + `createTrainingJob` server-side.
-4. Job status screen: poll Lab `getTrainingJob`, cancel, retry.
-5. On success: register artifact in Scooling model registry for chat/inference routing.
-6. Knowtation: reuse same export adapter if vault API differs only by source.
+---
 
-**Definition of Done:** Click train in Scooling → job runs on GPU host → new model appears in model picker.
+## QUEUED — T-KNOW: Knowtation
+
+1. Knowtation vault export adapter (same JSONL contract as Scooling).
+2. Shared `own:know:{userId}:{version}` dataset id namespace.
+3. UI entry in Knowtation for “train personal model” with pack credits.
+
+**Definition of Done:** Knowtation vault → train → model usable in Knowtation chat.
+
+---
+
+## QUEUED — T-YT: YouTube
+
+1. Include YouTube-ingested notes/transcripts in vault export when user selects them.
+2. Scope flag `youtube` in registration metadata.
+3. Policy: only user-owned / user-imported YouTube content in their vault (T-POLICY).
+
+**Definition of Done:** User with YouTube vault items can include or exclude them in training scope.
 
 ---
 
 ## QUEUED — T8: GPU Deployment Lane
 
-**Goal:** Always-on training capacity, not laptop-only.
+1. GPU host (Railway GPU, RunPod, Modal, or dedicated box).
+2. Env: `HF_TOKEN`, package/artifact/state roots, storage creds, Hub auth.
+3. Worker queue process; timeout from estimated job duration (not 30s stub).
+4. `GET /health` + `/training/queue`.
 
-1. GPU-enabled host (Railway GPU service, RunPod, Modal, or dedicated box).
-2. Env: `HF_TOKEN`, `SCOOLING_LAB_PACKAGE_ROOT`, `SCOOLING_LAB_ARTIFACT_ROOT`, `SCOOLING_LAB_STATE_PATH`, storage creds, Scooling auth secret.
-3. Separate **worker queue process** or long-timeout subprocess (training > 30s).
-4. Health: `GET /health` + queue depth from existing `/training/queue`.
-5. Network: Scooling backend → Lab API allowlist only.
+**Definition of Done:** Deploy from `main`; job from staging completes without SSH.
 
-**Definition of Done:** Deploy from `main`; submit job from Scooling staging; completes without manual SSH.
+---
+
+## QUEUED — T-LEGAL: Legal And License Closure
+
+**These are finish work, not launch blockers to bypass.** Each row maps to
+`docs/LEGAL-REVIEW-CHECKLIST.md`.
+
+| # | Item | Action | Blocks training? |
+| --- | --- | --- | --- |
+| L1 | Repo license (Apache-2.0 Lab) | Confirm distribution model documented | No |
+| L2 | Runtime deps in BOM | T4 lockfile + `bom --check` | Yes until T4 |
+| L3 | Per-dep license allowlist | Audit torch/transformers/Unsloth/peft rows | Yes until T4 |
+| L4 | No AGPL Studio/CLI | Keep `studio/` / `unsloth_cli/` block in CI | **Hard stop if violated** |
+| L5 | Base **model** license | Accept HF Llama/etc. terms; document in NOTICE | Yes for Llama weights |
+| L6 | Unsloth core Apache audit | Byte audit installed wheel paths (no AGPL segments) | Yes until T4 |
+| L7 | Dataset consent policy | T-POLICY product copy + server gate | Yes for user vault |
+| L8 | Retention / export / deletion | Already coded; T-POLICY + T6 prod wiring | No for solo test |
+| L9 | API injection controls | Already coded; regression tests | No |
+| L10 | Logs exclude private bodies | Verify in T4 worker logging | Yes |
+| L11 | Payer-visible cost policy | **T-CREDIT** UI quote + receipt | Yes at launch |
+| L12 | Quota / replay / idempotency | Job idempotency done; pack quota in T-CREDIT | Partial |
+| L13 | GPU creds env-scoped | T8 deploy review | Yes |
+| L14 | Egress allowlist | T8 network policy doc | Yes |
+| L15 | Artifact provenance on export | T6 download + provenance endpoint | No |
+| L16 | Incident response owner | Solo: operator runbook in `SECURITY.md` | No |
+
+**Definition of Done:** Checklist copied into `docs/LEGAL-CLOSURE.md` with checkbox, evidence link, and
+date for every row; CI still blocks AGPL paths.
+
+### Legal blocks explained (specific)
+
+1. **Unsloth AGPL optional paths** — `studio/*` and `unsloth_cli/*` are AGPL-3.0. We **may** use the
+   Apache-2.0 PyPI core; we **may not** import, copy, or bundle Studio/CLI. This is implemented in
+   `license_policy.py` + CI. **Not a reason to skip training** — use core only.
+
+2. **GPL/AGPL dependency family** — Blocked unless distribution model changes. All torch/transformers/
+   peft/Unsloth-core must pass allowlist at lock time.
+
+3. **Base model weights license** — Models like Llama require Hugging Face license acceptance and
+   `HF_TOKEN`. User/operator accepts terms; document in NOTICE. **Build step**, not skip.
+
+4. **User data consent** — Training on vault content requires explicit consent UI (T-POLICY). Required
+   for launch even for solo operator testing on real vault.
+
+5. **Paid GPU / pack disclosure** — Credit quote before train, receipt after (T-CREDIT). Required
+   because packs exist.
+
+---
+
+## QUEUED — T-POLICY: Consent, Scope, Redaction
+
+1. Training consent text + toggle (what data is used, retention, deletion).
+2. Scope rules: all vault, folders, tags, selections, YouTube-in-vault.
+3. Redaction/exclusion rules (PII, excluded notes) — minimum viable + extension points.
+4. Scooling → Lab authorization envelope (server JWT claims: userId, packId, datasetId).
+
+**Definition of Done:** No job starts without consent + valid server auth + approved dataset.
 
 ---
 
 ## QUEUED — T9: Finish Line Verification
 
-**Goal:** Declare Scooling Lab operational for vault-based personal models.
+1. E2E: Scooling vault → pack reserve → train → debit → model in inference.
+2. E2E: Knowtation vault path.
+3. E2E: YouTube-inclusive scope path.
+4. Fake worker **dev-only**; prod refuses `fixture-tiny-llm` unless env set.
+5. `CROSS-REPO-STATUS.md` → **operational**; stub inventory → zero.
 
-1. E2E script: seed vault → export → train → download adapter → load in inference smoke test.
-2. Demote fake worker to `SCOOLING_LAB_DEV_FIXTURES=1` only.
-3. Update `CROSS-REPO-STATUS.md` to **operational**.
-4. Archive fixture-only docs footnotes; keep synthetic dataset for CI.
-
-**Definition of Done:** `/build-verification-review` pass + operator sign-off on one real vault train.
+**Definition of Done:** All seven-tier tests green; operator sign-off; no STUB rows remain.
 
 ---
 
-## Explicitly Skipped (solo / no users)
+## Retired: “Explicitly Skipped” list
 
-| Former gate | Why skipped now |
+The following were **incorrectly** marked skipped in the 2026-08-26 draft. They are **reinstated**
+above:
+
+| Former “skip” | Correct treatment |
 | --- | --- |
-| Separate legal review phase | Operator is sole developer; AGPL path block stays in code |
-| Wave A `dryRun: true` product path | Jump straight to GPU real train |
-| Paid-GPU billing caps | No payers |
-| Multi-tenant quota tiers | No tenants |
-| Incident-response committee | Operator owns incidents |
-| Private-data pilot cohort | No external users |
-
-Re-enable any row above when Scooling has paying users or external vault data at scale.
+| Separate legal review phase | **T-LEGAL** — complete checklist with evidence |
+| Paid-GPU billing caps | **T-CREDIT** — Muse Hub pack measure/allot/debit |
+| Multi-tenant quota tiers | **T-CREDIT** — per-user pack balance from pool |
+| Wave A dryRun product path | Demote to dev fixtures at T9; prod uses GPU real train |
+| Incident-response committee | Operator runbook in T-LEGAL L16 |
+| Private-data pilot cohort | Real vault training in T5/T7 — no fake cohort gate |
 
 ---
 
-## Hard Stops (unchanged)
+## Hard Stops (unchanged — not skippable)
 
 - No AGPL `studio/` or `unsloth_cli/` imports.
 - No secrets, vault bodies, or model weights in git.
