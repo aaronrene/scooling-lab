@@ -1,0 +1,46 @@
+# Scooling Lab Overseer Kit consumer — installed 2026-08-26.
+# Canonical kit source: ~/OVERSEER_KIT/overseer-kit (NOT the K1 stub at ~/overseer-kit).
+overseer_config_version: 1
+repo:
+  name: scooling-lab
+  root_relative_docs: docs
+vcs:
+  regime: muse+git-mirror
+  canonical: muse
+  git:
+    remote: origin
+    main_branch: main
+    mirror_branch: muse-mirror
+    feature_branch_pattern: "feat/{slug}"
+  muse:
+    staging_remote: staging
+    main_branch: main
+docs:
+  handover: OVERSEER-HANDOVER.md
+  roadmap: ROADMAP.md
+  coordination: CROSS-REPO-STATUS.md
+  standing_decisions: LEGAL-CLOSURE.md
+  handover_title: Scooling Lab Overseer Handover
+  roadmap_title: Scooling Lab Roadmap
+thresholds:
+  realign_max_commits: 50
+  drift_warn_only: true
+freeze_contract:
+  enabled: true
+  reviewer:
+    mode: agent
+    model: thinking-high
+    provider: local
+    fallback: human
+  human_escalation: [security, irreversible, real_money, gates_tier3]
+kit:
+  source_path: ../OVERSEER_KIT/overseer-kit
+  pinned_version: "0.1.0"
+  install_status: live
+  notes: >
+    Live-installed 2026-08-26 via ok init --migrate --regime muse+git-mirror.
+    Living docs: docs/OVERSEER-HANDOVER.md + docs/ROADMAP.md.
+    SD-14: only muse-mirror may target GitHub main.
+workspace:
+  constellation_id: scooling-stack
+  product_order_root: ~/scooling

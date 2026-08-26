@@ -1,4 +1,11 @@
-# Roadmap
+# Scooling Lab Roadmap
+
+**Scope of this board.** Scooling Lab owns the **training API, worker runtime, dependency BOM, and
+license boundary** for personal model jobs. Product UI, vault export, pack credits, and consent live
+in Scooling / Knowtation — wired in T7, T-KNOW, T-CREDIT, T-POLICY.
+
+Cross-repo product order: `~/scooling/docs/OVERSEER-HANDOVER.md` + `~/scooling/docs/ROADMAP.md`.
+Session relay: `docs/OVERSEER-HANDOVER.md`.
 
 ## Phase Model Key
 
@@ -15,6 +22,18 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 
 ---
 
+## Current status (2026-08-26)
+
+| | |
+| --- | --- |
+| **Overseer Kit** | **Live** — `initialized: true`, `kit_version: 0.1.0`, `footprint_self_integrity: ok` |
+| **Tests** | **127/127** green (stdlib runtime; no Unsloth installed) |
+| **GPU worker** | **STUB** — isolated subprocess; provenance placeholder only (GPU-S0) |
+| **THE ONE NEXT STEP** | **T4b Auto** — implement `docs/T4-TRAINER-SPEC.md` (freeze **`pass`**) |
+| **Finish-line** | T4 → T9 + T-CREDIT + T-LEGAL + T-POLICY — no skips (see build queue) |
+
+---
+
 ## Build Queue (master)
 
 | Phase | Model | Status | Deliverable |
@@ -23,7 +42,7 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | T2 | Auto | **DONE** | Training job API contract, provenance, retention, deletion |
 | T3 | Auto | **DONE** | Dataset review lifecycle, queue, cancel/retry, persistence hook |
 | GPU-S0 | Auto | **STUB** | Isolated GPU worker subprocess — **placeholder only** (no weights) |
-| **T4** | **Thinking → Auto** | **NEXT** | Real Unsloth fine-tune → loadable adapter weights |
+| **T4** | **Thinking → Auto** | **NEXT** (T4a **DONE**; T4b Auto) | Real Unsloth fine-tune → loadable adapter weights |
 | T5 | Auto | QUEUED | Vault dataset package ingest (content hash, server-side auth) |
 | T6 | Auto | QUEUED | Artifact object storage + signed download + durable job store |
 | **T-CREDIT** | Auto | QUEUED | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
