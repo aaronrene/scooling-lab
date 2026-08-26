@@ -10,10 +10,15 @@ Scooling Lab exposes a local training contract for:
    `dryRun: false`, completed by an **isolated** Lab-owned worker subprocess
    (`python -m scooling_lab.gpu_worker`). Provenance stays content-free;
    `baseModelId` is the GPU model id. Private note bodies are not loaded.
-   Unsloth is still evidence-only (not installed).
+   Training JSONL is read from `SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/train.jsonl`
+   (server env only — never from HTTP JSON). Adapter artifacts are written under
+   `SCOOLING_LAB_ARTIFACT_ROOT/{jobId}/`; `artifactHash` is SHA-256 of
+   `artifact.tar.gz`. Default CI uses `SCOOLING_LAB_GPU_TRAIN_MODE=stub`; CUDA
+   hosts set `real` for Unsloth QLoRA (see `docs/T4-TRAINER-SPEC.md`).
 
-It does not install Unsloth, expose worker URLs on the wire, or accept browser-supplied
-callbacks, paths, or shell commands.
+It does not expose worker URLs on the wire, or accept browser-supplied
+callbacks, paths, or shell commands. The API container remains stdlib-only;
+GPU runtime deps are locked in `requirements.lock` for the worker host only.
 
 ## Routes
 

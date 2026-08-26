@@ -12,9 +12,9 @@ review can decide later whether the Apache-2.0 core package is acceptable.
 - Evidence date: 2026-06-10.
 - Evidence source: PyPI page for `unsloth` and the public `unslothai/unsloth` repository license
   notice.
-- Install status: not installed.
-- Lockfile status: not present in `requirements.lock`.
-- Import status: no `unsloth` import in Scooling Lab.
+- Install status: locked in `requirements.lock` (T4); installed on GPU host only.
+- Lockfile status: present in `requirements.lock` (unsloth==2026.6.1 + training stack).
+- Import status: lazy import in `gpu_worker.py` real train mode only — API process stdlib-only.
 
 ## Preserved License Notice
 
