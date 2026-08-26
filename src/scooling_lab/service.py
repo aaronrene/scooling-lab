@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Iterable
 
+from scooling_lab.artifact_storage import (
+    ArtifactStorageBackend,
+    VolumeArtifactStorage,
+    artifact_storage_from_env,
+    local_tarball_path,
+)
 from scooling_lab.contracts import (
     GPU_PRODUCT_MODEL_ID,
     TrainingJobRequest,
@@ -19,11 +26,13 @@ from scooling_lab.dataset_review import (
     dataset_shape_from_registration,
     validate_review_request,
 )
+from scooling_lab.download_auth import verify_download_auth
 from scooling_lab.errors import ApiError, ErrorCode
 from scooling_lab.fake_worker import FakeTrainingWorker
 from scooling_lab.gpu_worker import IsolatedGpuWorker
 from scooling_lab.package_ingest import parse_package_ingest_request, write_package_files
 from scooling_lab.server_auth import verify_ingest_auth
+from scooling_lab.store import TrainingJobRecord, TrainingJobStore
 
 
 class TrainingApiService:
@@ -42,6 +51,7 @@ class TrainingApiService:
         store: TrainingJobStore,
         auto_run_worker: bool = True,
         dataset_store: DatasetStore | None = None,
+        artifact_storage: ArtifactStorageBackend | None = None,
     ) -> None:
         """Create a service with optional synchronous worker completion.
 
@@ -49,7 +59,14 @@ class TrainingApiService:
         synthetic fixture dataset is used, so existing callers are unaffected.
         """
 
+        self._artifact_storage = (
+            artifact_storage
+            if artifact_storage is not None
+            else artifact_storage_from_env()
+        )
         self._store = store
+        if store._on_storage_delete is None and self._artifact_storage is not None:
+            store._on_storage_delete = self._artifact_storage.delete
         self._fake_worker = FakeTrainingWorker(store)
         self._gpu_worker = IsolatedGpuWorker(store)
         self._auto_run_worker = auto_run_worker
@@ -169,7 +186,7 @@ class TrainingApiService:
 
         require_job_id(job_id)
         self._store.evaluate_expiry(job_id)
-        artifacts = [artifact.to_dict() for artifact in self._store.list_artifacts(job_id)]
+        artifacts = self._store.list_artifacts(job_id)
         return {"jobId": job_id, "artifacts": artifacts}
 
     def get_provenance(self, job_id: str) -> dict[str, object]:
@@ -183,17 +200,71 @@ class TrainingApiService:
         self._store.evaluate_expiry(job_id)
         return self._store.get_provenance(job_id).to_dict()
 
+    def get_artifact_download(
+        self,
+        job_id: str,
+        artifact_id: str,
+        authorization_header: str,
+    ) -> dict[str, object]:
+        """Return a signed download URL for one stored artifact (server auth only)."""
+
+        require_job_id(job_id)
+        require_artifact_id(artifact_id)
+        verify_download_auth(authorization_header, job_id, artifact_id)
+        if self._artifact_storage is None:
+            raise ApiError(ErrorCode.NOT_FOUND, 404)
+        self._store.evaluate_expiry(job_id)
+        record = self._store.get(job_id)
+        artifact = next(
+            (item for item in record.artifacts if item.id == artifact_id),
+            None,
+        )
+        if artifact is None or artifact.storage_key is None:
+            raise ApiError(ErrorCode.NOT_FOUND, 404)
+        signed = self._artifact_storage.issue_download(
+            job_id,
+            artifact_id,
+            artifact.storage_key,
+        )
+        return {
+            "artifactId": artifact_id,
+            "jobId": job_id,
+            **signed.to_public_dict(),
+        }
+
+    def read_artifact_content(
+        self,
+        job_id: str,
+        artifact_id: str,
+        token: str,
+    ) -> tuple[bytes, str]:
+        """Stream artifact bytes for a volume signed-content token."""
+
+        require_job_id(job_id)
+        require_artifact_id(artifact_id)
+        if not isinstance(self._artifact_storage, VolumeArtifactStorage):
+            raise ApiError(ErrorCode.NOT_FOUND, 404)
+        from scooling_lab.artifact_storage import verify_volume_content_token  # noqa: PLC0415
+
+        storage_key = verify_volume_content_token(job_id, artifact_id, token)
+        path = self._artifact_storage.resolve_path(storage_key)
+        if not path.is_file():
+            raise ApiError(ErrorCode.NOT_FOUND, 404)
+        return path.read_bytes(), "application/gzip"
+
     def delete_artifact(self, job_id: str, artifact_id: str) -> dict[str, object]:
         """Delete an artifact and all derived content-bearing metadata."""
 
         require_job_id(job_id)
         require_artifact_id(artifact_id)
-        return self._store.delete_artifact(job_id, artifact_id).to_dict()
+        receipt, _storage_key = self._store.delete_artifact(job_id, artifact_id)
+        return receipt.to_dict()
 
     def sweep_expired_artifacts(self, now: datetime | None = None) -> dict[str, object]:
         """Evaluate all retention policies and delete expired artifacts."""
 
-        return self._store.sweep_expired(now)
+        summary, _storage_keys = self._store.sweep_expired(now)
+        return summary
 
     def verify_deleted_artifact_absence(self, hash_values: Iterable[str]) -> bool:
         """Verify deleted artifact hashes are absent from all store outputs."""
@@ -214,7 +285,10 @@ class TrainingApiService:
         acquired = self._run_semaphore.acquire(blocking=True, timeout=10)
         try:
             if acquired:
-                return self._dispatch_worker(job_id)
+                completed = self._dispatch_worker(job_id)
+                if completed.status == TrainingJobStatus.SUCCEEDED:
+                    self._upload_artifacts_for_job(job_id)
+                return completed
             return self._store.get(job_id)
         finally:
             if acquired:
@@ -229,3 +303,18 @@ class TrainingApiService:
         if job.request.model_id == GPU_PRODUCT_MODEL_ID:
             return self._gpu_worker.run_job(job_id)
         return self._fake_worker.run_job(job_id)
+
+    def _upload_artifacts_for_job(self, job_id: str) -> None:
+        """Upload adapter tarballs to object storage when configured."""
+
+        if self._artifact_storage is None:
+            return
+        record = self._store.get(job_id)
+        tarball = local_tarball_path(job_id)
+        if not tarball.is_file():
+            return
+        for artifact in record.artifacts:
+            if artifact.storage_key is not None:
+                continue
+            storage_key = self._artifact_storage.upload(job_id, artifact.id, tarball)
+            self._store.set_artifact_storage_key(job_id, artifact.id, storage_key)

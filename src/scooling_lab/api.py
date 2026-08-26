@@ -8,9 +8,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
 from typing import Callable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from scooling_lab.errors import ApiError, ErrorCode, error_payload
+from scooling_lab.runtime_config import resolve_state_path
 from scooling_lab.service import TrainingApiService
 from scooling_lab.store import TrainingJobStore
 
@@ -39,17 +40,24 @@ def parse_job_route(path: str, suffix: str = "") -> str | None:
     return remainder
 
 
-def parse_artifact_route(path: str) -> tuple[str, str] | None:
-    """Extract safe job and artifact ids from artifact deletion routes."""
+def parse_artifact_route(path: str, suffix: str = "") -> tuple[str, str] | None:
+    """Extract safe job and artifact ids from artifact subresource routes."""
 
     prefix = "/training/jobs/"
     marker = "/artifacts/"
     if not path.startswith(prefix) or marker not in path:
         return None
     remainder = path.removeprefix(prefix)
-    job_id, separator, artifact_id = remainder.partition(marker)
+    job_id, separator, tail = remainder.partition(marker)
     if separator != marker:
         return None
+    if suffix:
+        ending = f"/{suffix}"
+        if not tail.endswith(ending):
+            return None
+        artifact_id = tail[: -len(ending)]
+    else:
+        artifact_id = tail
     if "/" in artifact_id:
         return None
     if not JOB_ID_RE.fullmatch(job_id) or not ARTIFACT_ID_RE.fullmatch(artifact_id):
@@ -134,6 +142,28 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
             if artifacts_job_id is not None:
                 self._handle_json(lambda: service.list_artifacts(artifacts_job_id))
                 return
+            download_route = parse_artifact_route(path, "download")
+            if download_route is not None:
+                job_id, artifact_id = download_route
+                auth_header = self.headers.get("Authorization", "")
+                self._handle_json(
+                    lambda: service.get_artifact_download(
+                        job_id,
+                        artifact_id,
+                        auth_header,
+                    )
+                )
+                return
+            content_route = parse_artifact_route(path, "content")
+            if content_route is not None:
+                job_id, artifact_id = content_route
+                query = parse_qs(urlparse(self.path).query)
+                token_values = query.get("token", [])
+                token = token_values[0] if token_values else ""
+                self._handle_binary(
+                    lambda: service.read_artifact_content(job_id, artifact_id, token)
+                )
+                return
             provenance_job_id = parse_job_route(path, "provenance")
             if provenance_job_id is not None:
                 self._handle_json(lambda: service.get_provenance(provenance_job_id))
@@ -188,6 +218,22 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
                 raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
             return payload
 
+        def _handle_binary(self, action: Callable[[], tuple[bytes, str]]) -> None:
+            try:
+                body, content_type = action()
+            except ApiError as error:
+                self._send_error(error)
+                return
+            except Exception:
+                self._send_error(ApiError(ErrorCode.INTERNAL_ERROR, 500))
+                return
+            self.send_response(HTTPStatus.OK.value)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
         def _handle_json(self, action: Callable[[], object]) -> None:
             try:
                 result = action()
@@ -214,10 +260,17 @@ def make_handler(service: TrainingApiService) -> type[BaseHTTPRequestHandler]:
     return ScoolingLabRequestHandler
 
 
+def build_service(persistence_path: Path | None = None) -> TrainingApiService:
+    """Construct the API service with durable state and artifact storage."""
+
+    store = TrainingJobStore(persistence_path=persistence_path)
+    return TrainingApiService(store)
+
+
 def run_server(host: str, port: int, persistence_path: Path | None = None) -> None:
     """Run the Scooling Lab API server until interrupted."""
 
-    service = TrainingApiService(TrainingJobStore(persistence_path=persistence_path))
+    service = build_service(persistence_path=persistence_path)
     server = ThreadingHTTPServer((host, port), make_handler(service))
     server.serve_forever()
 
@@ -236,7 +289,8 @@ def main() -> None:
     if not 1 <= port <= 65_535:
         raise SystemExit(f"PORT out of range: {port}")
 
-    run_server(host, port)
+    persistence_path = resolve_state_path()
+    run_server(host, port, persistence_path=persistence_path)
 
 
 if __name__ == "__main__":

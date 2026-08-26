@@ -27,10 +27,11 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | | |
 | --- | --- |
 | **Overseer Kit** | **Live** — `initialized: true`, `kit_version: 0.1.0`, `footprint_self_integrity: ok` |
-| **Tests** | **147/147** green (146 run + 1 `@gpu` skip without CUDA) |
+| **Tests** | **161/161** green (160 run + 1 `@gpu` skip without CUDA) |
 | **GPU worker** | **T4b** — stub/real train modes; **T5** content `datasetHash` |
-| **THE ONE NEXT STEP** | **T6 Auto** — artifact storage + durable job store |
-| **Finish-line** | T6 → T9 + T-CREDIT + T-LEGAL + T-POLICY — no skips (see build queue) |
+| **Artifact storage** | **T6** — volume/S3/R2 upload; signed download; durable state |
+| **THE ONE NEXT STEP** | **T-CREDIT Auto** — Muse Hub pack credit measure/reserve/debit |
+| **Finish-line** | T-CREDIT → T9 + T-LEGAL + T-POLICY — no skips (see build queue) |
 
 ---
 
@@ -44,8 +45,8 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | GPU-S0 | Auto | **DONE** | Isolated GPU worker subprocess — replaced by T4b |
 | **T4** | **Thinking → Auto** | **DONE** (T4a freeze + T4b BV **`pass`**; `@gpu` on CUDA before production) | Real Unsloth fine-tune → loadable adapter weights |
 | **T5** | Auto | **DONE** (BV **`pass`** 2026-08-26; CUDA `@gpu` deferred to T8/T9) | Vault dataset package ingest (content hash, server-side auth) |
-| T6 | Auto | **NEXT** | Artifact object storage + signed download + durable job store |
-| **T-CREDIT** | Auto | QUEUED | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
+| **T6** | Auto | **DONE** (BV **`pass`** 2026-08-26) | Artifact object storage + signed download + durable job store |
+| T-CREDIT | Auto | **NEXT** | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
 | T7 | Auto | QUEUED | Scooling app integration (export, UI, job polling, model registration) |
 | T-KNOW | Auto | QUEUED | Knowtation vault export → same training pipeline |
 | T-YT | Auto | QUEUED | YouTube-sourced vault content → training export (where user opted in) |
@@ -63,7 +64,7 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | GPU worker placeholder (hashes only, no train) | `gpu_worker.py` | **T4b** — stub/real train + tarball |
 | Fake / Wave A worker in prod path | `fake_worker.py` | T9 dev-only (`SCOOLING_LAB_DEV_FIXTURES=1`) |
 | Unsloth evidence-only (not installed) | `requirements.lock` | **T4b** lockfile + BOM row |
-| In-memory / optional persistence default | `api.main()` | T6 `SCOOLING_LAB_STATE_PATH` required in prod |
+| In-memory / optional persistence default | `api.main()` | **T6 DONE** — `SCOOLING_LAB_STATE_PATH` required in prod |
 | GPU subprocess 30s timeout | `gpu_worker.py` | **T4b** `SCOOLING_LAB_GPU_TIMEOUT_SECONDS` (default 3600) |
 | No pack credit gate on job create | — | T-CREDIT Hub integration |
 | Billing “lives elsewhere” doc-only | `SECURITY.md`, README | T-CREDIT implemented end-to-end |
@@ -97,11 +98,18 @@ What exists today (134 tests green; 1 `@gpu` skip without CUDA):
 
 ---
 
-## NEXT — T6: Artifact Storage And Durable State
+## DONE — T6: Artifact Storage And Durable State
 
-**Goal:** Restart-survivable queue; object storage upload; signed artifact download.
+- `SCOOLING_LAB_STATE_PATH` required in production (`runtime_config.py`)
+- Volume / S3 / R2 object storage upload after GPU train (`artifact_storage.py`)
+- `GET .../artifacts/{id}/download` — server JWT → signed URL
+- Retention sweep deletes storage bytes + metadata
+- Seven-tier tests in `tests/test_t6_artifact_storage.py`
+- BV: `docs/reviews/2026-08-26-t6-artifact-storage-bv-pass.md` **`pass`**
 
 ---
+
+## NEXT — T-CREDIT: Muse Hub Pack Credits
 
 ## DONE — T4: Real Trainer Runtime
 
@@ -144,17 +152,6 @@ with loadable adapter on disk.
 ## RETIRED — T5 queue detail (Lab **DONE** 2026-08-26; Scooling export → **T7**)
 
 Lab deliverables shipped in **DONE — T5** above. Remaining Scooling-app vault export wiring is **T7**.
-
----
-
-## QUEUED — T6: Artifact Storage And Durable State
-
-1. Require `SCOOLING_LAB_STATE_PATH` in production.
-2. Upload adapter tarball to object storage (S3 / R2 / volume).
-3. `GET .../artifacts/{id}/download` — signed URL, server auth only.
-4. Retention sweep deletes storage + metadata per policy.
-
-**Definition of Done:** Restart-survivable queue; succeeded artifact downloadable.
 
 ---
 

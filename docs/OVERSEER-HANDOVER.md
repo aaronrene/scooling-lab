@@ -4,72 +4,71 @@
 
 **Regime:** muse+git-mirror (`.overseer/config.yaml` live)  
 **Constellation:** `scooling-stack` (product order: `~/scooling`)  
-**Product surfaces:** Scooling, Knowtation, YouTube train paths queue after T4–T6 in this repo.
+**Product surfaces:** Scooling, Knowtation, YouTube train paths queue after T6 in this repo.
 
 ---
 
 <!-- overseer:next role=primary lane=product status=live -->
-## NEXT SESSION — T6 Artifact Storage + Durable State (PRIMARY)
+## NEXT SESSION — T-CREDIT Pack Credits (PRIMARY)
 
 **Date:** 2026-08-26  
-**Current position:** T5 Auto **DONE** — BV **`pass`**; 147 tests green  
+**Current position:** T6 Auto **DONE** — BV **`pass`**; 161 tests green  
 **Model:** Auto
 
 ### Operator decision (2026-08-26)
 
-CUDA `@gpu` live test and Railway GPU wiring remain deferred to **T8/T9** — not blocking T6 build.
+CUDA `@gpu` live test and Railway GPU wiring remain deferred to **T8/T9** — not blocking T-CREDIT.
 
-### What just landed (T5)
+### What just landed (T6)
 
 | Slice | Deliverable |
 | --- | --- |
-| T5 | `POST /datasets/{id}/package` — server JWT auth envelope |
-| T5 | Canonical `train.jsonl` write; `datasetHash` = SHA-256 of file bytes |
-| T5 | `vaultScope` metadata; seven-tier `test_t5_package_ingest.py` |
-| T5 | `TRAINING-API-CONTRACT.md` + LEGAL-CLOSURE L16 evidenced |
+| T6 | `SCOOLING_LAB_STATE_PATH` required in production |
+| T6 | Volume / S3 / R2 artifact upload after GPU train |
+| T6 | `GET .../artifacts/{id}/download` — server JWT → signed URL |
+| T6 | Retention sweep deletes object storage + metadata |
+| T6 | Seven-tier `test_t6_artifact_storage.py`; BV **`pass`** |
 
 ### THE ONE NEXT STEP — **Model: Auto**
 
 | | |
 | --- | --- |
-| **ID** | **T6** |
-| **Branch** | `feat/t6-artifact-storage` (from `feat/t5-vault-package-ingest` or `main` after merge) |
-| **Repo** | **scooling-lab** |
-| **Read first** | `docs/ROADMAP.md` T6; `docs/TRAINING-API-CONTRACT.md` retention/download gaps |
+| **ID** | **T-CREDIT** |
+| **Branch** | `feat/t-credit-pack-reserve` (from `main` after T6 merge) |
+| **Repo** | **scooling** + Muse Hub (cross-repo) |
+| **Read first** | `docs/ROADMAP.md` T-CREDIT; `~/scooling/docs/OVERSEER-HANDOVER.md` |
 
-### Paste-ready prompt — T6
+### Paste-ready prompt — T-CREDIT
+
+```
+Phase T-CREDIT — Muse Hub pack credit measure, reserve, debit, refund (scooling + Hub).
+
+Model: Auto
+Repo: ~/scooling (primary); scooling-lab accepts reservation envelope later
+Branch: feat/t-credit-pack-reserve
+Step: T-CREDIT
+Authority: docs/ROADMAP.md T-CREDIT
+
+Deliverables:
+1. Training pack SKU + credit unit definition
+2. Pre-flight estimate API (dataset rows + model + epochs → quote)
+3. Reserve on createTrainingJob (idempotent with job idempotency key)
+4. Capture debit on succeeded; release on failed/cancelled
+5. Insufficient balance → refuse before GPU starts
+6. Audit row (content-free): job id, pack id, credits reserved/captured
+7. Seven-tier tests; governance sync
+```
+
+---
+
+### Paste-ready prompt (archived — T6 Auto)
 
 ```
 Phase T6 — Artifact object storage + durable job store (scooling-lab).
 
 Model: Auto
-Repo: ~/scooling-lab
-Branch: feat/t6-artifact-storage
-Step: T6
-Authority: docs/ROADMAP.md T6
-
-Deliverables:
-1. Require SCOOLING_LAB_STATE_PATH in production
-2. Upload adapter tarball to object storage (S3 / R2 / volume)
-3. GET .../artifacts/{id}/download — signed URL, server auth only
-4. Retention sweep deletes storage + metadata per policy
-5. Seven-tier tests; update TRAINING-API-CONTRACT.md
-6. Run /build-verification-review → pass before ROADMAP T6 → DONE
-7. Feature-branch commit; push; draft PR (not to GitHub main)
-
-Governance sync: update docs/ROADMAP.md + docs/OVERSEER-HANDOVER.md on completion.
-```
-
----
-
-### Paste-ready prompt (archived — T5 Auto)
-
-```
-Phase T5 — Vault dataset package ingest (scooling-lab).
-
-Model: Auto
-Status: DONE — BV pass (2026-08-26); 147 tests green; @gpu skip without CUDA.
-Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
+Status: DONE — BV pass (2026-08-26); 161 tests green; @gpu skip without CUDA.
+Evidence: docs/reviews/2026-08-26-t6-artifact-storage-bv-pass.md
 ```
 
 ---
@@ -79,8 +78,8 @@ Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 | Order | Phase | Repo |
 | --- | --- | --- |
 | 1 | T4 Real trainer | scooling-lab — **DONE** |
-| 2 | T5 Vault package ingest | scooling-lab — **DONE** (Scooling export → T7) |
-| 3 | T6 Artifacts + durable state | scooling-lab |
+| 2 | T5 Vault package ingest | scooling-lab — **DONE** |
+| 3 | T6 Artifacts + durable state | scooling-lab — **DONE** |
 | 4 | T-CREDIT Pack measure / reserve / debit | scooling + Muse Hub |
 | 5 | T7 Scooling train UI + backend | scooling |
 | 6 | T-KNOW Knowtation train path | knowtation + scooling-lab |
@@ -97,16 +96,15 @@ Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 | Item | Value |
 | --- | --- |
 | Repo | `scooling-lab` |
-| Branch | `feat/t5-vault-package-ingest` |
+| Branch | `feat/t6-artifact-storage` |
 | Overseer Kit | **live** — `initialized: true`, `kit_version: 0.1.0`, `footprint_self_integrity: ok` |
 | Handover | `docs/OVERSEER-HANDOVER.md` |
 | Roadmap | `docs/ROADMAP.md` |
-| T5 BV | **`pass`** — `docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md` |
-| Tests | 147 passed, 1 skipped (`@gpu` — no CUDA in CI) |
-| Package ingest | Server JWT + canonical JSONL + content `datasetHash` |
-| GPU worker | T4b stub/real; provenance uses file hash after T5 |
+| T6 BV | **`pass`** — `docs/reviews/2026-08-26-t6-artifact-storage-bv-pass.md` |
+| Tests | 161 passed, 1 skipped (`@gpu` — no CUDA in CI) |
+| Artifact storage | Volume/S3/R2 upload; signed download; durable `SCOOLING_LAB_STATE_PATH` |
 | Pack credits | Muse Hub packs exist; **T-CREDIT not wired** |
-| Legal | L2, L3, L5, L6, L9, L16 **DONE**; others open per `LEGAL-CLOSURE.md` |
+| Legal | L2, L3, L5, L6, L9, L16, L17 **DONE**; others open per `LEGAL-CLOSURE.md` |
 | Products | Scooling / Knowtation / YouTube train paths **not wired** (T7+) |
 
 ### Governance gates checklist
@@ -115,6 +113,7 @@ Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 - [x] **T4a freeze** — `docs/T4-TRAINER-SPEC.md` + `ok check-ok` **`pass`**
 - [x] **T4b build** — `/build-verification-review` **`pass`** (2026-08-26)
 - [x] **T5 build** — `/build-verification-review` **`pass`** (2026-08-26)
+- [x] **T6 build** — `/build-verification-review` **`pass`** (2026-08-26)
 - [ ] **CUDA `@gpu`** — deferred to T8/T9 (operator 2026-08-26)
 
 ---
@@ -123,7 +122,7 @@ Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 
 - [x] **T4** Real Unsloth train → adapter files (build); CUDA verify before production
 - [x] **T5** Vault package ingest + content hash (Lab); Scooling export → T7
-- [ ] **T6** Durable state + object storage + download
+- [x] **T6** Durable state + object storage + download
 - [ ] **T-CREDIT** Muse Hub pack measure / reserve / debit / refund
 - [ ] **T7** Scooling UI + backend train flow
 - [ ] **T-KNOW** Knowtation vault export + train
@@ -140,8 +139,8 @@ Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 | Branch | Purpose | PR |
 | --- | --- | --- |
 | `main` | Stable contract + tests | — |
-| `feat/t5-vault-package-ingest` | T5 vault package ingest | draft PR → `main` (not feature→main per SD-14) |
-| `feat/t4-unsloth-trainer` | T4b real trainer runtime | prior draft PR |
+| `feat/t6-artifact-storage` | T6 artifact storage + durable state | draft PR → `main` (not feature→main per SD-14) |
+| `feat/t5-vault-package-ingest` | T5 vault package ingest | prior draft PR |
 
 ---
 
@@ -156,3 +155,4 @@ Evidence: docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md
 | 2026-08-26 | **T4b DONE** — gpu_worker stub/real, lockfile, 134 tests, BV pass |
 | 2026-08-26 | Operator: defer CUDA/Railway live test; continue T5+ then verify at T8/T9 |
 | 2026-08-26 | **T5 DONE** — package ingest API, content datasetHash, 147 tests, BV pass |
+| 2026-08-26 | **T6 DONE** — artifact storage, signed download, durable state, 161 tests, BV pass |

@@ -21,7 +21,7 @@ do not mark a row complete without evidence (PR link, test name, or doc section)
 | L14 | GPU credentials env-scoped | OPEN | T8 deploy doc | — |
 | L15 | Network egress allowlisted | OPEN | T8 network policy | — |
 | L16 | Private data excluded from fixtures/logs/telemetry | DONE | T5 server-auth ingest + `test_t5_package_ingest` security tier | 2026-08-26 |
-| L17 | Artifact provenance, retention, deletion, export | PARTIAL | Provenance API done; export T6 | — |
+| L17 | Artifact provenance, retention, deletion, export | DONE | T6 download + retention storage sweep | 2026-08-26 |
 | L18 | Exact package versions and deployment lane approved | OPEN | T4 lockfile + T8 deploy record | — |
 | L19 | Incident response ownership | OPEN | Operator runbook in `SECURITY.md` | — |
 

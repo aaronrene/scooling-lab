@@ -27,6 +27,8 @@ GPU runtime deps are locked in `requirements.lock` for the worker host only.
 - `POST /training/jobs/{job_id}/cancel`: `cancelTrainingJob`.
 - `POST /training/jobs/{job_id}/retry`: `retryTrainingJob`.
 - `GET /training/jobs/{job_id}/artifacts`: `listArtifacts`.
+- `GET /training/jobs/{job_id}/artifacts/{artifact_id}/download`: `getArtifactDownload` (server auth).
+- `GET /training/jobs/{job_id}/artifacts/{artifact_id}/content`: signed volume download (token query).
 - `GET /training/jobs/{job_id}/provenance`: `getProvenance`.
 - `DELETE /training/jobs/{job_id}/artifacts/{artifact_id}`: `deleteArtifact`.
 - `POST /datasets`: register a dataset id for review.
@@ -354,6 +356,51 @@ the canonical `train.jsonl` file bytes (newline-terminated JSONL).
 Dataset must be registered and not `rejected`. Re-ingest replaces the on-disk
 package atomically.
 
+### T6: Artifact object storage and durable state
+
+Production deploys **require** `SCOOLING_LAB_STATE_PATH` (JSON job store).
+Local dev / CI may set `SCOOLING_LAB_DEV_FIXTURES=1` to allow in-memory defaults.
+
+**Object storage** (operator env only — never from HTTP JSON):
+
+| Env | Role |
+| --- | --- |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_BACKEND` | `volume` (default), `s3`, `r2`, or `none` |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_ROOT` | Volume backend root directory |
+| `SCOOLING_LAB_PUBLIC_BASE_URL` | Public API base for volume signed-content URLs |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_BUCKET` | S3/R2 bucket |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_ENDPOINT` | S3/R2 endpoint URL |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_ACCESS_KEY_ID` | Storage access key |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_SECRET_ACCESS_KEY` | Storage secret key |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_REGION` | Region (R2: `auto`) |
+
+After a GPU job succeeds, the adapter `artifact.tar.gz` is uploaded from
+`SCOOLING_LAB_ARTIFACT_ROOT/{jobId}/`. Metadata records an internal `storageKey`
+(persisted only — **not** returned on `listArtifacts`).
+
+**Download (server auth only):** `GET .../artifacts/{artifact_id}/download`
+
+- `Authorization: Bearer <jwt>` — HS256 envelope (`SCOOLING_LAB_DOWNLOAD_AUTH_SECRET`,
+  or falls back to ingest secret)
+- Claims: `iss`, `sub`, `datasetId` = `{jobId}:{artifactId}`, `iat`, `exp`
+- Response (content-free):
+
+```json
+{
+  "jobId": "job_…",
+  "artifactId": "artifact_…",
+  "downloadUrl": "https://…",
+  "expiresAt": "2026-08-26T23:00:00Z"
+}
+```
+
+- **Volume backend:** `downloadUrl` points to `GET .../content?token=…&exp=…`
+  (HMAC token; no Bearer header on content fetch).
+- **S3/R2 backend:** `downloadUrl` is a presigned GET URL.
+
+**Retention sweep** deletes both store metadata **and** object-storage bytes.
+Expiry tombstones retain provenance (existing T3 behavior); explicit
+`DELETE …/artifacts/{id}` wipes provenance and storage.
 
 The following shapes are stable contract fixtures for the Slice 9 submission UI:
 
