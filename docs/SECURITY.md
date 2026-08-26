@@ -29,18 +29,20 @@ shell commands, callback URLs, local file paths, or Unsloth Studio/CLI component
 - Secret scanning runs in CI with gitleaks.
 - The BOM audit fails on non-allowlisted licenses and blocked AGPL source-path segments.
 
-## Blocked Until Later Review
+## Finish-Line Work (see docs/ROADMAP.md)
 
-- Private learner data bodies on the wire or in artifacts.
-- Paid GPU billing inside Lab (payer policy lives in Scooling / Hub).
-- Real weight training / Unsloth package install.
-- Unsloth Studio or CLI use.
+| Gap | Phase |
+| --- | --- |
+| Real weight training / Unsloth install | T4 |
+| Vault package bodies (server-side ingest only) | T5 |
+| Pack credit measure / reserve / debit | T-CREDIT (Scooling / Muse Hub) |
+| Legal checklist closure | T-LEGAL (`docs/LEGAL-CLOSURE.md`) |
+
+## Permanently Blocked
+
+- Unsloth Studio or CLI (AGPL).
 - External worker endpoints supplied by clients.
 - Callback or webhook delivery.
 - Local filesystem paths supplied by a browser or client.
 - Shell command execution.
-
-## Review Requirement
-
-Before any private data bodies or Unsloth weight training, the legal checklist in
-`docs/LEGAL-REVIEW-CHECKLIST.md` must be completed and accepted with matching seven-tier tests.
+- Private note bodies on the public HTTP wire or in git.
