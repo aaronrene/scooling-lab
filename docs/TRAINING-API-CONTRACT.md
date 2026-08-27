@@ -10,10 +10,15 @@ Scooling Lab exposes a local training contract for:
    `dryRun: false`, completed by an **isolated** Lab-owned worker subprocess
    (`python -m scooling_lab.gpu_worker`). Provenance stays content-free;
    `baseModelId` is the GPU model id. Private note bodies are not loaded.
-   Unsloth is still evidence-only (not installed).
+   Training JSONL is read from `SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/train.jsonl`
+   (server env only — never from HTTP JSON). Adapter artifacts are written under
+   `SCOOLING_LAB_ARTIFACT_ROOT/{jobId}/`; `artifactHash` is SHA-256 of
+   `artifact.tar.gz`. Default CI uses `SCOOLING_LAB_GPU_TRAIN_MODE=stub`; CUDA
+   hosts set `real` for Unsloth QLoRA (see `docs/T4-TRAINER-SPEC.md`).
 
-It does not install Unsloth, expose worker URLs on the wire, or accept browser-supplied
-callbacks, paths, or shell commands.
+It does not expose worker URLs on the wire, or accept browser-supplied
+callbacks, paths, or shell commands. The API container remains stdlib-only;
+GPU runtime deps are locked in `requirements.lock` for the worker host only.
 
 ## Routes
 
@@ -22,11 +27,14 @@ callbacks, paths, or shell commands.
 - `POST /training/jobs/{job_id}/cancel`: `cancelTrainingJob`.
 - `POST /training/jobs/{job_id}/retry`: `retryTrainingJob`.
 - `GET /training/jobs/{job_id}/artifacts`: `listArtifacts`.
+- `GET /training/jobs/{job_id}/artifacts/{artifact_id}/download`: `getArtifactDownload` (server auth).
+- `GET /training/jobs/{job_id}/artifacts/{artifact_id}/content`: signed volume download (token query).
 - `GET /training/jobs/{job_id}/provenance`: `getProvenance`.
 - `DELETE /training/jobs/{job_id}/artifacts/{artifact_id}`: `deleteArtifact`.
 - `POST /datasets`: register a dataset id for review.
 - `POST /datasets/{id}/submit`: submit registered dataset for review.
 - `POST /datasets/{id}/review`: approve or reject.
+- `POST /datasets/{id}/package`: server-auth package ingest (T5).
 - `GET /datasets/{id}`: dataset status (content-free).
 
 ## createTrainingJob Request
@@ -295,8 +303,104 @@ provenance record is ever stored.
 
 - `DATASET_NOT_APPROVED` — the dataset referenced in a job creation request has not
   completed the review lifecycle or has been rejected.  Returns HTTP 403.
+- `UNAUTHORIZED` — package ingest or other server-auth route lacked a valid Bearer
+  JWT envelope.  Returns HTTP 401.
 
-### Slice 9 Fixture Shapes
+### T5: Vault package ingest (`POST /datasets/{id}/package`)
+
+Server-to-server only. Browsers must not call this route directly; Scooling backend
+mints a short-lived HS256 JWT using `SCOOLING_LAB_INGEST_AUTH_SECRET`.
+
+**Authorization:** `Authorization: Bearer <jwt>` with claims:
+
+- `iss` — must match `SCOOLING_LAB_INGEST_AUTH_ISSUER` (default `scooling`)
+- `sub` — server caller label (safe identifier)
+- `datasetId` — must equal the `{id}` path segment
+- `iat` / `exp` — bounded clock skew (60s)
+
+**Request body** (no paths, URLs, callbacks, or shell fields):
+
+```json
+{
+  "rows": [
+    { "instruction": "...", "input": "", "output": "..." }
+  ],
+  "vaultScope": { "kind": "all" },
+  "rowCount": 1
+}
+```
+
+- `rows` — 1..10000 training rows; each row has exactly `instruction`, `input`,
+  `output` string fields (bounded length; path/URL patterns refused).
+- `vaultScope` — content-free scope metadata: `kind` is one of `all`, `folder`,
+  `tag`, `selection`, `youtube`. Non-`all` kinds carry id lists only (`folderIds`,
+  `tagIds`, `noteIds`, optional `youtubeIds`) — never note bodies.
+- `rowCount` — optional; when present must equal `len(rows)`.
+
+**Write path:** canonical UTF-8 JSONL is written to
+`SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/train.jsonl` with companion
+`manifest.json`. `datasetHash` in the response and GPU provenance is SHA-256 of
+the canonical `train.jsonl` file bytes (newline-terminated JSONL).
+
+**Response** (content-free — no filesystem paths):
+
+```json
+{
+  "datasetId": "own:user123:v1",
+  "datasetHash": "<sha256-hex>",
+  "rowCount": 1,
+  "vaultScope": { "kind": "all" }
+}
+```
+
+Dataset must be registered and not `rejected`. Re-ingest replaces the on-disk
+package atomically.
+
+### T6: Artifact object storage and durable state
+
+Production deploys **require** `SCOOLING_LAB_STATE_PATH` (JSON job store).
+Local dev / CI may set `SCOOLING_LAB_DEV_FIXTURES=1` to allow in-memory defaults.
+
+**Object storage** (operator env only — never from HTTP JSON):
+
+| Env | Role |
+| --- | --- |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_BACKEND` | `volume` (default), `s3`, `r2`, or `none` |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_ROOT` | Volume backend root directory |
+| `SCOOLING_LAB_PUBLIC_BASE_URL` | Public API base for volume signed-content URLs |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_BUCKET` | S3/R2 bucket |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_ENDPOINT` | S3/R2 endpoint URL |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_ACCESS_KEY_ID` | Storage access key |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_SECRET_ACCESS_KEY` | Storage secret key |
+| `SCOOLING_LAB_ARTIFACT_STORAGE_REGION` | Region (R2: `auto`) |
+
+After a GPU job succeeds, the adapter `artifact.tar.gz` is uploaded from
+`SCOOLING_LAB_ARTIFACT_ROOT/{jobId}/`. Metadata records an internal `storageKey`
+(persisted only — **not** returned on `listArtifacts`).
+
+**Download (server auth only):** `GET .../artifacts/{artifact_id}/download`
+
+- `Authorization: Bearer <jwt>` — HS256 envelope (`SCOOLING_LAB_DOWNLOAD_AUTH_SECRET`,
+  or falls back to ingest secret)
+- Claims: `iss`, `sub`, `datasetId` = `{jobId}:{artifactId}`, `iat`, `exp`
+- Response (content-free):
+
+```json
+{
+  "jobId": "job_…",
+  "artifactId": "artifact_…",
+  "downloadUrl": "https://…",
+  "expiresAt": "2026-08-26T23:00:00Z"
+}
+```
+
+- **Volume backend:** `downloadUrl` points to `GET .../content?token=…&exp=…`
+  (HMAC token; no Bearer header on content fetch).
+- **S3/R2 backend:** `downloadUrl` is a presigned GET URL.
+
+**Retention sweep** deletes both store metadata **and** object-storage bytes.
+Expiry tombstones retain provenance (existing T3 behavior); explicit
+`DELETE …/artifacts/{id}` wipes provenance and storage.
 
 The following shapes are stable contract fixtures for the Slice 9 submission UI:
 

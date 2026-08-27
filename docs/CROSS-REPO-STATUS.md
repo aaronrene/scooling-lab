@@ -14,8 +14,8 @@ vault content connect through **queued finish phases** in `docs/ROADMAP.md` — 
 | Training API + state machine | scooling-lab | DONE (T2/T3) |
 | GPU worker subprocess | scooling-lab | **STUB** — placeholder provenance (GPU-S0) |
 | Real Unsloth training | scooling-lab | **NEXT** (T4) |
-| Vault package ingest | scooling-lab | QUEUED (T5) |
-| Artifact storage + download | scooling-lab | QUEUED (T6) |
+| Vault package ingest | scooling-lab | **DONE** (T5); Scooling export → T7 |
+| Artifact storage + download | scooling-lab | **DONE** (T6) |
 | Pack credit measure/debit | scooling + Muse Hub | QUEUED (T-CREDIT) |
 | Scooling train UI + export | scooling | QUEUED (T7) |
 | Knowtation train path | knowtation + scooling | QUEUED (T-KNOW) |

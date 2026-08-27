@@ -15,8 +15,18 @@ T0–T3 contract work is done (127 tests). GPU worker is a **stub** until T4. Fi
 Muse Hub pack credits (T-CREDIT), legal closure (T-LEGAL), and Scooling / Knowtation / YouTube
 integration — no deferred phases.
 
-Session relay: [`docs/HANDOVER.md`](docs/HANDOVER.md). Cross-repo status:
+Session relay: [`docs/OVERSEER-HANDOVER.md`](docs/OVERSEER-HANDOVER.md) (Overseer handover). Cross-repo status:
 [`docs/CROSS-REPO-STATUS.md`](docs/CROSS-REPO-STATUS.md).
+
+## Overseer Kit
+
+Governance via [Overseer Kit](https://github.com/aaronrene/overseer-kit) (`ok` CLI). Config:
+`.overseer/config.yaml`.
+
+```bash
+~/OVERSEER_KIT/overseer-kit/cli/ok -C ~/scooling-lab status
+~/OVERSEER_KIT/overseer-kit/cli/ok -C ~/scooling-lab next
+```
 
 ## Boundary Rules
 

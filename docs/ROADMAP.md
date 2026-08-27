@@ -1,4 +1,11 @@
-# Roadmap
+# Scooling Lab Roadmap
+
+**Scope of this board.** Scooling Lab owns the **training API, worker runtime, dependency BOM, and
+license boundary** for personal model jobs. Product UI, vault export, pack credits, and consent live
+in Scooling / Knowtation — wired in T7, T-KNOW, T-CREDIT, T-POLICY.
+
+Cross-repo product order: `~/scooling/docs/OVERSEER-HANDOVER.md` + `~/scooling/docs/ROADMAP.md`.
+Session relay: `docs/OVERSEER-HANDOVER.md`.
 
 ## Phase Model Key
 
@@ -15,6 +22,19 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 
 ---
 
+## Current status (2026-08-26)
+
+| | |
+| --- | --- |
+| **Overseer Kit** | **Live** — `initialized: true`, `kit_version: 0.1.0`, `footprint_self_integrity: ok` |
+| **Tests** | **161/161** green (160 run + 1 `@gpu` skip without CUDA) |
+| **GPU worker** | **T4b** — stub/real train modes; **T5** content `datasetHash` |
+| **Artifact storage** | **T6** — volume/S3/R2 upload; signed download; durable state |
+| **THE ONE NEXT STEP** | **T-CREDIT Auto** — Muse Hub pack credit measure/reserve/debit |
+| **Finish-line** | T-CREDIT → T9 + T-LEGAL + T-POLICY — no skips (see build queue) |
+
+---
+
 ## Build Queue (master)
 
 | Phase | Model | Status | Deliverable |
@@ -22,11 +42,11 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 | T0 | Auto | **DONE** | License + dependency BOM (`DEPENDENCIES.md`, AGPL path block) |
 | T2 | Auto | **DONE** | Training job API contract, provenance, retention, deletion |
 | T3 | Auto | **DONE** | Dataset review lifecycle, queue, cancel/retry, persistence hook |
-| GPU-S0 | Auto | **STUB** | Isolated GPU worker subprocess — **placeholder only** (no weights) |
-| **T4** | **Thinking → Auto** | **NEXT** | Real Unsloth fine-tune → loadable adapter weights |
-| T5 | Auto | QUEUED | Vault dataset package ingest (content hash, server-side auth) |
-| T6 | Auto | QUEUED | Artifact object storage + signed download + durable job store |
-| **T-CREDIT** | Auto | QUEUED | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
+| GPU-S0 | Auto | **DONE** | Isolated GPU worker subprocess — replaced by T4b |
+| **T4** | **Thinking → Auto** | **DONE** (T4a freeze + T4b BV **`pass`**; `@gpu` on CUDA before production) | Real Unsloth fine-tune → loadable adapter weights |
+| **T5** | Auto | **DONE** (BV **`pass`** 2026-08-26; CUDA `@gpu` deferred to T8/T9) | Vault dataset package ingest (content hash, server-side auth) |
+| **T6** | Auto | **DONE** (BV **`pass`** 2026-08-26) | Artifact object storage + signed download + durable job store |
+| T-CREDIT | Auto | **NEXT** | Muse Hub **pack credit** measure, reserve, debit, refund on train jobs |
 | T7 | Auto | QUEUED | Scooling app integration (export, UI, job polling, model registration) |
 | T-KNOW | Auto | QUEUED | Knowtation vault export → same training pipeline |
 | T-YT | Auto | QUEUED | YouTube-sourced vault content → training export (where user opted in) |
@@ -41,12 +61,11 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 
 | Stub | Location | Replaced by |
 | --- | --- | --- |
-| GPU worker placeholder (hashes only, no train) | `gpu_worker.py` | T4 real Unsloth QLoRA |
-| `package_dataset_hash` id-only (no file bytes) | `gpu_worker.py` | T5 content SHA-256 |
+| GPU worker placeholder (hashes only, no train) | `gpu_worker.py` | **T4b** — stub/real train + tarball |
 | Fake / Wave A worker in prod path | `fake_worker.py` | T9 dev-only (`SCOOLING_LAB_DEV_FIXTURES=1`) |
-| Unsloth evidence-only (not installed) | `requirements.lock` | T4 lockfile + BOM row |
-| In-memory / optional persistence default | `api.main()` | T6 `SCOOLING_LAB_STATE_PATH` required in prod |
-| GPU subprocess 30s timeout | `gpu_worker.py` | T8 job-scoped timeout from pack-estimated duration |
+| Unsloth evidence-only (not installed) | `requirements.lock` | **T4b** lockfile + BOM row |
+| In-memory / optional persistence default | `api.main()` | **T6 DONE** — `SCOOLING_LAB_STATE_PATH` required in prod |
+| GPU subprocess 30s timeout | `gpu_worker.py` | **T4b** `SCOOLING_LAB_GPU_TIMEOUT_SECONDS` (default 3600) |
 | No pack credit gate on job create | — | T-CREDIT Hub integration |
 | Billing “lives elsewhere” doc-only | `SECURITY.md`, README | T-CREDIT implemented end-to-end |
 | Legal checklist unchecked | `LEGAL-REVIEW-CHECKLIST.md` | T-LEGAL all boxes + tests |
@@ -56,19 +75,57 @@ Knowtation, YouTube) are **in scope and queued** — not deferred.
 
 ## DONE — T0 / T2 / T3
 
-What exists today (127 tests green):
+What exists today (134 tests green; 1 `@gpu` skip without CUDA):
 
 - HTTP API: jobs, artifacts, provenance, datasets, queue (`src/scooling_lab/api.py`)
 - Dataset lifecycle: `registered → pending_review → approved | rejected`
-- Workers: fake worker (synthetic fixture); GPU worker subprocess (**stub** — provenance only)
+- Workers: fake worker (synthetic fixture); GPU worker subprocess (**T4b** — stub/real Unsloth QLoRA)
 - Docker + Railway deploy shell (API only, stdlib runtime)
-- Unsloth recorded as evidence-only; **not installed**
+- GPU training stack locked in `requirements.lock`; installed on GPU host only
 
 ---
 
-## NEXT — T4: Real Trainer Runtime
+## DONE — T5: Vault Dataset Package Ingest
 
-**Goal:** A completed GPU job produces a real fine-tuned adapter the app can load.
+- `POST /datasets/{id}/package` — HS256 Bearer JWT (`SCOOLING_LAB_INGEST_AUTH_SECRET`)
+- Canonical `train.jsonl` under `SCOOLING_LAB_PACKAGE_ROOT/{datasetId}/`
+- `datasetHash` = SHA-256 of canonical file bytes (GPU provenance)
+- `vaultScope` metadata: `all` / `folder` / `tag` / `selection` / `youtube` (ids only)
+- Seven-tier tests in `tests/test_t5_package_ingest.py`
+- BV: `docs/reviews/2026-08-26-t5-package-ingest-bv-pass.md` **`pass`**
+
+**Operator note:** CUDA `@gpu` live test still deferred to T8/T9 before production GPU train.
+
+---
+
+## DONE — T6: Artifact Storage And Durable State
+
+- `SCOOLING_LAB_STATE_PATH` required in production (`runtime_config.py`)
+- Volume / S3 / R2 object storage upload after GPU train (`artifact_storage.py`)
+- `GET .../artifacts/{id}/download` — server JWT → signed URL
+- Retention sweep deletes storage bytes + metadata
+- Seven-tier tests in `tests/test_t6_artifact_storage.py`
+- BV: `docs/reviews/2026-08-26-t6-artifact-storage-bv-pass.md` **`pass`**
+
+---
+
+## NEXT — T-CREDIT: Muse Hub Pack Credits
+
+## DONE — T4: Real Trainer Runtime
+
+T4a freeze: `docs/T4-TRAINER-SPEC.md` (`ok check-ok` **`pass`**). T4b Auto delivered:
+
+- Locked `requirements.lock` + `DEPENDENCIES.md` (`python -m scooling_lab.bom`)
+- `gpu_worker.py`: env-driven package/artifact roots; stub/real train; tarball `artifactHash`
+- `SCOOLING_LAB_GPU_TIMEOUT_SECONDS` (default 3600); subprocess isolation preserved
+- Seven-tier tests + `@gpu` skip without CUDA
+- LEGAL-CLOSURE L2, L3, L5, L6, L9 evidenced
+
+**CUDA gate (before T5):** run `test_gpu_real_unsloth_train_writes_adapter` on a CUDA host.
+
+---
+
+## RETIRED — T4 build queue (was NEXT)
 
 ### T4a — Thinking (freeze spec)
 
@@ -92,31 +149,9 @@ with loadable adapter on disk.
 
 ---
 
-## QUEUED — T5: Vault Dataset Package Ingest
+## RETIRED — T5 queue detail (Lab **DONE** 2026-08-26; Scooling export → **T7**)
 
-### Scooling Lab
-
-1. `POST /datasets/{id}/package` — server-to-server auth (JWT from Scooling backend).
-2. Stream/write JSONL to package root; `datasetHash` = SHA-256 of canonical bytes.
-3. Scope metadata: `vaultScope` (`all`, `folder`, `tag`, `selection`, `youtube`) — ids only on wire.
-
-### Scooling app
-
-1. Vault export service → training JSONL for selected scope.
-2. Redaction hook (implement pass-through minimum; full rules in T-POLICY).
-
-**Definition of Done:** Real vault export lands as `own:{userId}:{version}`; provenance hash matches file.
-
----
-
-## QUEUED — T6: Artifact Storage And Durable State
-
-1. Require `SCOOLING_LAB_STATE_PATH` in production.
-2. Upload adapter tarball to object storage (S3 / R2 / volume).
-3. `GET .../artifacts/{id}/download` — signed URL, server auth only.
-4. Retention sweep deletes storage + metadata per policy.
-
-**Definition of Done:** Restart-survivable queue; succeeded artifact downloadable.
+Lab deliverables shipped in **DONE — T5** above. Remaining Scooling-app vault export wiring is **T7**.
 
 ---
 
