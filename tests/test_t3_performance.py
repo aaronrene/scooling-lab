@@ -50,7 +50,7 @@ class T3PerformanceTests(unittest.TestCase):
         """Registering and reviewing 500 datasets completes under 3 seconds."""
 
         ds_store = DatasetStore()
-        dataset_ids = [f"perf-ds-{i:05d}" for i in range(500)]
+        dataset_ids = [f"own:perf-ds-{i:05d}" for i in range(500)]
         start = time.monotonic()
         for did in dataset_ids:
             ds_store.register(did)
@@ -68,15 +68,15 @@ class T3PerformanceTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "perf-rejected-ds",
+            "own:perf-rejected-ds",
             default_dataset_shape(RejectionReasonCode.POLICY_VIOLATION),
         )
-        ds_store.submit_for_review("perf-rejected-ds")
-        ds_store.reject("perf-rejected-ds", RejectionReasonCode.POLICY_VIOLATION)
+        ds_store.submit_for_review("own:perf-rejected-ds")
+        ds_store.reject("own:perf-rejected-ds", RejectionReasonCode.POLICY_VIOLATION)
 
         start = time.monotonic()
         for _ in range(1_000):
-            ds_store.is_approved("perf-rejected-ds")
+            ds_store.is_approved("own:perf-rejected-ds")
         elapsed = time.monotonic() - start
         self.assertLess(
             elapsed, 0.2, msg=f"1 000 rejected checks took {elapsed:.3f}s"

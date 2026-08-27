@@ -9,14 +9,24 @@ contract, worker runtime, fixtures, tests, dependency inventory, and license not
 
 ## Current Phase
 
-Phase T0: license and dependency inventory.
+**NEXT:** T4 — real Unsloth trainer runtime (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
 
-This repository starts with no trainer implementation and no private data path. The first goal is to
-prove that the worker boundary, dependency policy, and license evidence can be audited before any
-training job runs.
+T0–T3 contract work is done (127 tests). GPU worker is a **stub** until T4. Finish-line plan includes
+Muse Hub pack credits (T-CREDIT), legal closure (T-LEGAL), and Scooling / Knowtation / YouTube
+integration — no deferred phases.
 
-Current cross-repo status and coordination rules are documented in
+Session relay: [`docs/OVERSEER-HANDOVER.md`](docs/OVERSEER-HANDOVER.md) (Overseer handover). Cross-repo status:
 [`docs/CROSS-REPO-STATUS.md`](docs/CROSS-REPO-STATUS.md).
+
+## Overseer Kit
+
+Governance via [Overseer Kit](https://github.com/aaronrene/overseer-kit) (`ok` CLI). Config:
+`.overseer/config.yaml`.
+
+```bash
+~/OVERSEER_KIT/overseer-kit/cli/ok -C ~/scooling-lab status
+~/OVERSEER_KIT/overseer-kit/cli/ok -C ~/scooling-lab next
+```
 
 ## Boundary Rules
 

@@ -159,16 +159,24 @@ class T3UnitDatasetIdValidationTests(unittest.TestCase):
     """Unit tests for dataset id format enforcement."""
 
     def test_unit_t3_safe_dataset_ids_accepted(self) -> None:
-        """Well-formed dataset ids within length bounds are accepted."""
+        """Practice fixture and own:* product ids are accepted."""
 
         safe_ids = (
             "fixture:synthetic-tiny-v1",
-            "ds.001",
-            "dataset-v2",
+            "own:abc",
+            "own:packaged.notes_v1",
         )
         for dataset_id in safe_ids:
             with self.subTest(dataset_id=dataset_id):
                 self.assertEqual(require_dataset_id(dataset_id), dataset_id)
+
+    def test_unit_t3_non_dual_class_dataset_ids_rejected(self) -> None:
+        """Arbitrary safe identifiers outside fixture/own:* are refused."""
+
+        for bad in ("ds.001", "dataset-v2", "custom-ds-v1", "public:notes"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ApiError):
+                    require_dataset_id(bad)
 
     def test_unit_t3_path_traversal_and_url_ids_rejected(self) -> None:
         """Path-like and URL-like dataset ids are rejected."""
@@ -198,7 +206,7 @@ class T3UnitDatasetStoreTests(unittest.TestCase):
         """A new dataset starts in registered state."""
 
         store = DatasetStore()
-        record = store.register("new-dataset-v1")
+        record = store.register("own:new-dataset-v1")
         self.assertEqual(record.status, DatasetStatus.REGISTERED)
 
     def test_unit_t3_register_already_approved_raises_conflict(self) -> None:
@@ -213,40 +221,40 @@ class T3UnitDatasetStoreTests(unittest.TestCase):
         """Submit-time validation approves the default synthetic shape."""
 
         store = DatasetStore()
-        store.register("lifecycle-ds-v1")
-        submitted = store.submit_for_review("lifecycle-ds-v1")
+        store.register("own:lifecycle-ds-v1")
+        submitted = store.submit_for_review("own:lifecycle-ds-v1")
         self.assertEqual(submitted.status, DatasetStatus.APPROVED)
-        record = store.approve("lifecycle-ds-v1")
+        record = store.approve("own:lifecycle-ds-v1")
         self.assertEqual(record.status, DatasetStatus.APPROVED)
-        self.assertTrue(store.is_approved("lifecycle-ds-v1"))
+        self.assertTrue(store.is_approved("own:lifecycle-ds-v1"))
 
     def test_unit_t3_full_rejection_lifecycle(self) -> None:
         """Submit-time validation rejects invalid metadata with the reason code."""
 
         store = DatasetStore()
         store.register_shape(
-            "reject-ds-v1",
+            "own:reject-ds-v1",
             default_dataset_shape(RejectionReasonCode.FORMAT_INVALID),
         )
-        store.submit_for_review("reject-ds-v1")
-        record = store.reject("reject-ds-v1", RejectionReasonCode.FORMAT_INVALID)
+        store.submit_for_review("own:reject-ds-v1")
+        record = store.reject("own:reject-ds-v1", RejectionReasonCode.FORMAT_INVALID)
         self.assertEqual(record.status, DatasetStatus.REJECTED)
         self.assertEqual(record.rejection_reason, RejectionReasonCode.FORMAT_INVALID)
-        self.assertFalse(store.is_approved("reject-ds-v1"))
+        self.assertFalse(store.is_approved("own:reject-ds-v1"))
 
     def test_unit_t3_unknown_dataset_is_not_found(self) -> None:
         """Getting an unregistered dataset raises NOT_FOUND."""
 
         store = DatasetStore()
         with self.assertRaises(ApiError) as raised:
-            store.get("totally-unknown-ds")
+            store.get("own:totally-unknown-ds")
         self.assertEqual(raised.exception.code, ErrorCode.NOT_FOUND)
 
     def test_unit_t3_unapproved_dataset_blocks_job_creation(self) -> None:
         """Jobs against a registered-but-not-yet-approved dataset are refused."""
 
         store = DatasetStore()
-        store.register("new-dataset-v1")
+        store.register("own:new-dataset-v1")
         service = TrainingApiService(TrainingJobStore(), dataset_store=store)
 
         bad_payload = {
@@ -254,9 +262,10 @@ class T3UnitDatasetStoreTests(unittest.TestCase):
             "datasetId": "fixture:synthetic-tiny-v1",
             "modelId": "fixture-tiny-llm",
             "requestedBy": "unit-test",
+            "trainingParameters": {"dryRun": True},
         }
         with self.assertRaises(ApiError) as raised:
-            service.create_training_job({**bad_payload, "datasetId": "new-dataset-v1"})
+            service.create_training_job({**bad_payload, "datasetId": "own:new-dataset-v1"})
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
 
     def test_unit_t3_queue_state_fields_present(self) -> None:

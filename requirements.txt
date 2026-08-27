@@ -1,0 +1,2 @@
+# Empty — Lab is stdlib-only. Present so hosts that look for requirements.txt
+# still detect a Python app; install remains via pyproject/Dockerfile.

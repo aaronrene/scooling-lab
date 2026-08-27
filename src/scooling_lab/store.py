@@ -8,7 +8,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from scooling_lab.contracts import (
     TrainingJobRequest,
@@ -44,9 +44,27 @@ class ArtifactMetadata:
     created_at: str
     provenance_id: str
     retention_policy: RetentionPolicy
+    storage_key: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Serialize the artifact metadata for API responses and persistence."""
+
+        payload: dict[str, object] = {
+            "id": self.id,
+            "jobId": self.job_id,
+            "datasetHash": self.dataset_hash,
+            "artifactHash": self.artifact_hash,
+            "createdAt": self.created_at,
+            "expiresAt": expires_at(self.created_at, self.retention_policy),
+            "provenanceRecordId": self.provenance_id,
+            "retentionPolicy": self.retention_policy.to_public_dict(),
+        }
+        if self.storage_key is not None:
+            payload["storageKey"] = self.storage_key
+        return payload
+
+    def to_public_dict(self) -> dict[str, object]:
+        """Serialize artifact metadata for HTTP responses (no storage internals)."""
 
         return {
             "id": self.id,
@@ -63,6 +81,7 @@ class ArtifactMetadata:
     def from_dict(cls, payload: dict[str, object]) -> "ArtifactMetadata":
         """Rehydrate persisted artifact metadata."""
 
+        storage_key = payload.get("storageKey")
         return cls(
             id=str(payload["id"]),
             job_id=str(payload["jobId"]),
@@ -71,6 +90,21 @@ class ArtifactMetadata:
             created_at=str(payload["createdAt"]),
             provenance_id=str(payload["provenanceRecordId"]),
             retention_policy=retention_policy_from_mapping(payload["retentionPolicy"]),
+            storage_key=str(storage_key) if storage_key is not None else None,
+        )
+
+    def with_storage_key(self, storage_key: str) -> "ArtifactMetadata":
+        """Return a copy with the object-storage key attached."""
+
+        return ArtifactMetadata(
+            id=self.id,
+            job_id=self.job_id,
+            dataset_hash=self.dataset_hash,
+            artifact_hash=self.artifact_hash,
+            created_at=self.created_at,
+            provenance_id=self.provenance_id,
+            retention_policy=self.retention_policy,
+            storage_key=storage_key,
         )
 
 
@@ -170,7 +204,7 @@ class TrainingJobRecord:
                 "retentionPolicy": self.request.retention_policy.to_public_dict(),
                 "trainingParameters": dict(self.request.training_parameters),
             },
-            "artifacts": [artifact.to_dict() for artifact in self.artifacts],
+            "artifacts": [artifact.to_public_dict() for artifact in self.artifacts],
             "provenance": self.provenance.to_dict()
             if self.provenance is not None
             else None,
@@ -242,6 +276,7 @@ class TrainingJobStore:
         persistence_path: Path | None = None,
         queue_limit: int = 5,
         max_concurrent_running: int = 1,
+        on_storage_delete: Callable[[str], None] | None = None,
     ) -> None:
         """Create a store with bounded queued/running capacity and a concurrency limit.
 
@@ -255,6 +290,7 @@ class TrainingJobStore:
         self._persistence_path = persistence_path
         self._queue_limit = queue_limit
         self._max_concurrent_running = max_concurrent_running
+        self._on_storage_delete = on_storage_delete
         if persistence_path is not None and persistence_path.exists():
             self._load()
 
@@ -359,6 +395,29 @@ class TrainingJobStore:
                 self._save()
             return record
 
+    def set_artifact_storage_key(
+        self, job_id: str, artifact_id: str, storage_key: str
+    ) -> TrainingJobRecord:
+        """Attach the object-storage key after upload completes."""
+
+        require_job_id(job_id)
+        require_artifact_id(artifact_id)
+        with self._lock:
+            record = self.get(job_id)
+            artifact = self._find_artifact(record, artifact_id)
+            if artifact is None:
+                raise ApiError(ErrorCode.NOT_FOUND, 404)
+            updated = [
+                item.with_storage_key(storage_key)
+                if item.id == artifact_id
+                else item
+                for item in record.artifacts
+            ]
+            record.artifacts = updated
+            record.updated_at = utc_now_iso()
+            self._save()
+            return record
+
     def list_artifacts(self, job_id: str) -> list[ArtifactMetadata]:
         """Return artifacts for one job with no cross-job scan exposure."""
 
@@ -367,7 +426,7 @@ class TrainingJobStore:
             record = self.get(job_id)
             if record.status == TrainingJobStatus.DELETED:
                 return []
-            return list(record.artifacts)
+            return [artifact.to_public_dict() for artifact in record.artifacts]
 
     def get_provenance(self, job_id: str) -> ProvenanceRecord:
         """Return the validated provenance record for one completed job.
@@ -395,22 +454,33 @@ class TrainingJobStore:
             self._delete_expired_artifact_locked(record, now or datetime.now(UTC))
             return record
 
-    def sweep_expired(self, now: datetime | None = None) -> dict[str, object]:
-        """Delete every expired artifact and return a content-free sweep summary."""
+    def sweep_expired(
+        self, now: datetime | None = None
+    ) -> tuple[dict[str, object], list[str]]:
+        """Delete every expired artifact and return sweep summary + storage keys."""
 
         deleted_job_ids: list[str] = []
+        storage_keys: list[str] = []
         sweep_time = now or datetime.now(UTC)
         with self._lock:
             for record in sorted(self._jobs.values(), key=lambda item: item.id):
-                receipt = self._delete_expired_artifact_locked(record, sweep_time)
-                if receipt is not None and receipt.deleted:
+                result = self._delete_expired_artifact_locked(record, sweep_time)
+                if result is None:
+                    continue
+                receipt, storage_key = result
+                if receipt.deleted:
                     deleted_job_ids.append(record.id)
-            return {
-                "deletedJobIds": deleted_job_ids,
-                "deletedCount": len(deleted_job_ids),
-            }
+                    if storage_key is not None:
+                        storage_keys.append(storage_key)
+            return (
+                {
+                    "deletedJobIds": deleted_job_ids,
+                    "deletedCount": len(deleted_job_ids),
+                },
+                storage_keys,
+            )
 
-    def delete_artifact(self, job_id: str, artifact_id: str) -> DeletionReceipt:
+    def delete_artifact(self, job_id: str, artifact_id: str) -> tuple[DeletionReceipt, str | None]:
         """Delete an artifact, provenance, and job content as an idempotent cascade."""
 
         require_job_id(job_id)
@@ -418,12 +488,15 @@ class TrainingJobStore:
         with self._lock:
             record = self.get(job_id)
             if record.status == TrainingJobStatus.DELETED:
-                return DeletionReceipt(
-                    job_id=job_id,
-                    artifact_id=artifact_id,
-                    deleted=True,
-                    already_deleted=True,
-                    verified=True,
+                return (
+                    DeletionReceipt(
+                        job_id=job_id,
+                        artifact_id=artifact_id,
+                        deleted=True,
+                        already_deleted=True,
+                        verified=True,
+                    ),
+                    None,
                 )
             artifact = self._find_artifact(record, artifact_id)
             if artifact is None:
@@ -531,7 +604,7 @@ class TrainingJobStore:
 
     def _delete_expired_artifact_locked(
         self, record: TrainingJobRecord, now: datetime
-    ) -> DeletionReceipt | None:
+    ) -> tuple[DeletionReceipt, str | None] | None:
         if record.status != TrainingJobStatus.SUCCEEDED:
             return None
         for artifact in record.artifacts:
@@ -547,8 +620,9 @@ class TrainingJobStore:
         artifact: ArtifactMetadata,
         verify: bool = True,
         retain_provenance: bool = False,
-    ) -> DeletionReceipt:
+    ) -> tuple[DeletionReceipt, str | None]:
         hashes = self._hashes_for_artifact(record, artifact)
+        storage_key = artifact.storage_key
         record.status = transition(record.status, TrainingJobStatus.DELETED)
         record.request = None
         record.artifacts = []
@@ -557,12 +631,17 @@ class TrainingJobStore:
         record.deleted_at = utc_now_iso()
         record.updated_at = record.deleted_at
         self._save()
-        return DeletionReceipt(
-            job_id=record.id,
-            artifact_id=artifact.id,
-            deleted=True,
-            already_deleted=False,
-            verified=self.verify_hash_absence(hashes) if verify else True,
+        if storage_key is not None and self._on_storage_delete is not None:
+            self._on_storage_delete(storage_key)
+        return (
+            DeletionReceipt(
+                job_id=record.id,
+                artifact_id=artifact.id,
+                deleted=True,
+                already_deleted=False,
+                verified=self.verify_hash_absence(hashes) if verify else True,
+            ),
+            storage_key,
         )
 
     def _find_artifact(

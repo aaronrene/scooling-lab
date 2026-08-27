@@ -30,9 +30,10 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
             service.create_training_job(
                 {
                     "idempotencyKey": "sec-unknown-ds",
-                    "datasetId": "totally-unknown-ds-id",
+                    "datasetId": "own:totally-unknown-ds",
                     "modelId": "fixture-tiny-llm",
                     "requestedBy": "security-test",
+                    "trainingParameters": {"dryRun": True},
                 }
             )
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
@@ -42,19 +43,20 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "sec-rejected-ds",
+            "own:sec-rejected-ds",
             default_dataset_shape(RejectionReasonCode.POLICY_VIOLATION),
         )
-        ds_store.submit_for_review("sec-rejected-ds")
-        ds_store.reject("sec-rejected-ds", RejectionReasonCode.POLICY_VIOLATION)
+        ds_store.submit_for_review("own:sec-rejected-ds")
+        ds_store.reject("own:sec-rejected-ds", RejectionReasonCode.POLICY_VIOLATION)
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
         with self.assertRaises(ApiError) as raised:
             service.create_training_job(
                 {
                     "idempotencyKey": "sec-rejected",
-                    "datasetId": "sec-rejected-ds",
+                    "datasetId": "own:sec-rejected-ds",
                     "modelId": "fixture-tiny-llm",
                     "requestedBy": "security-test",
+                    "trainingParameters": {"dryRun": True},
                 }
             )
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
@@ -98,12 +100,12 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
 
         ds_store = DatasetStore()
         ds_store.register_shape(
-            "sec-reflect-check",
+            "own:sec-reflect-check",
             default_dataset_shape(RejectionReasonCode.SCHEMA_MISMATCH),
         )
-        ds_store.submit_for_review("sec-reflect-check")
-        ds_store.reject("sec-reflect-check", RejectionReasonCode.SCHEMA_MISMATCH)
-        public_str = str(ds_store.get("sec-reflect-check").to_public_dict())
+        ds_store.submit_for_review("own:sec-reflect-check")
+        ds_store.reject("own:sec-reflect-check", RejectionReasonCode.SCHEMA_MISMATCH)
+        public_str = str(ds_store.get("own:sec-reflect-check").to_public_dict())
         self.assertNotIn("caller supplied reason text", public_str)
         self.assertNotIn("free-text", public_str)
 
@@ -143,33 +145,35 @@ class T3SecurityDatasetBoundaryTests(unittest.TestCase):
         # Force an unapproved scenario with a clearly synthetic id.
         ds_store2 = DatasetStore()
         service2 = TrainingApiService(TrainingJobStore(), dataset_store=ds_store2)
-        ds_store2.register("echo-test-ds")
+        ds_store2.register("own:echo-test-ds")
         with self.assertRaises(ApiError) as raised:
             service2.create_training_job(
                 {
                     "idempotencyKey": "sec-no-echo2",
-                    "datasetId": "echo-test-ds",
+                    "datasetId": "own:echo-test-ds",
                     "modelId": "fixture-tiny-llm",
                     "requestedBy": "security-test",
+                    "trainingParameters": {"dryRun": True},
                 }
             )
         # Error message must not echo the dataset id.
-        self.assertNotIn("echo-test-ds", raised.exception.message)
+        self.assertNotIn("own:echo-test-ds", raised.exception.message)
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)
 
     def test_security_t3_registered_dataset_id_refused_before_submission(self) -> None:
         """A registered dataset that has not been submitted blocks job creation."""
 
         ds_store = DatasetStore()
-        ds_store.register("pending-review-ds")
+        ds_store.register("own:pending-review-ds")
         service = TrainingApiService(TrainingJobStore(), dataset_store=ds_store)
         with self.assertRaises(ApiError) as raised:
             service.create_training_job(
                 {
                     "idempotencyKey": "sec-pending",
-                    "datasetId": "pending-review-ds",
+                    "datasetId": "own:pending-review-ds",
                     "modelId": "fixture-tiny-llm",
                     "requestedBy": "security-test",
+                    "trainingParameters": {"dryRun": True},
                 }
             )
         self.assertEqual(raised.exception.code, ErrorCode.DATASET_NOT_APPROVED)

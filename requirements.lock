@@ -1,4 +1,10 @@
-# Scooling Lab T0 lockfile.
-# No runtime dependencies are installed or locked in this phase.
-# Future rows must use:
-# name==version # license=MIT source=third_party/name evidence=license-file
+# Scooling Lab T4 GPU worker runtime lockfile.
+# Rows: name==version # license=… source=… evidence=…
+unsloth==2026.6.1 # license=Apache-2.0 source=PyPI/unsloth evidence=docs/UNSLOTH-LICENSE-EVIDENCE.md
+torch==2.5.1 # license=BSD-3-Clause source=PyPI/torch evidence=PyPI-license-metadata
+transformers==4.48.3 # license=Apache-2.0 source=PyPI/transformers evidence=PyPI-license-metadata
+datasets==3.3.2 # license=Apache-2.0 source=PyPI/datasets evidence=PyPI-license-metadata
+peft==0.14.0 # license=Apache-2.0 source=PyPI/peft evidence=PyPI-license-metadata
+trl==0.15.2 # license=Apache-2.0 source=PyPI/trl evidence=PyPI-license-metadata
+accelerate==1.4.0 # license=Apache-2.0 source=PyPI/accelerate evidence=PyPI-license-metadata
+bitsandbytes==0.45.4 # license=MIT source=PyPI/bitsandbytes evidence=PyPI-license-metadata

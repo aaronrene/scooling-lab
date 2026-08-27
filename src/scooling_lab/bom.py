@@ -162,8 +162,9 @@ def render_markdown(entries: list[BomEntry]) -> str:
     lines.extend(
         [
             "",
-            "No Unsloth package is installed or locked in this phase. The pinned Unsloth",
-            "candidate is recorded as evidence only in `docs/UNSLOTH-LICENSE-EVIDENCE.md`.",
+            "GPU worker runtime dependencies are locked in `requirements.lock` and installed",
+            "only on the GPU host (not the stdlib API container). Unsloth core is Apache-2.0;",
+            "`studio/` and `unsloth_cli/` paths remain blocked per `license_policy.py`.",
             "",
         ]
     )

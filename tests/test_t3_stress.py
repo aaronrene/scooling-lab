@@ -47,7 +47,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
         )
         observed_running: list[int] = []
         lock = threading.Lock()
-        original_run_job = service._worker.run_job
+        original_run_job = service._fake_worker.run_job
 
         def instrumented_run(job_id: str) -> object:  # type: ignore[misc]
             snapshot = service._store.running_count()
@@ -55,7 +55,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
                 observed_running.append(snapshot)
             return original_run_job(job_id)
 
-        service._worker.run_job = instrumented_run  # type: ignore[method-assign]
+        service._fake_worker.run_job = instrumented_run  # type: ignore[method-assign]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
             list(
@@ -77,7 +77,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
         """Concurrent registrations for distinct datasets are all stored correctly."""
 
         ds_store = DatasetStore()
-        dataset_ids = [f"stress-ds-{i:04d}" for i in range(50)]
+        dataset_ids = [f"own:stress-ds-{i:04d}" for i in range(50)]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
             results = list(
@@ -92,8 +92,8 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
         """Only the first review decision for a dataset wins; retries are idempotent."""
 
         ds_store = DatasetStore()
-        ds_store.register("concurrent-review-ds")
-        ds_store.submit_for_review("concurrent-review-ds")
+        ds_store.register("own:concurrent-review-ds")
+        ds_store.submit_for_review("own:concurrent-review-ds")
 
         errors: list[ApiError] = []
         successes: list[str] = []
@@ -101,7 +101,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
 
         def try_approve() -> None:
             try:
-                record = ds_store.approve("concurrent-review-ds")
+                record = ds_store.approve("own:concurrent-review-ds")
                 with lock:
                     successes.append(record.status.value)
             except ApiError as exc:
@@ -111,7 +111,7 @@ class T3StressConcurrencyBoundTests(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(lambda _: try_approve(), range(16)))
 
-        final = ds_store.get("concurrent-review-ds")
+        final = ds_store.get("own:concurrent-review-ds")
         self.assertEqual(final.status.value, "approved")
 
     def test_stress_t3_queue_limit_still_enforced_under_concurrent_load(self) -> None:

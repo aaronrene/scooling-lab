@@ -17,6 +17,10 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
+from scooling_lab.contracts import (
+    FIXTURE_DATASET_ID,
+    require_training_dataset_id,
+)
 from scooling_lab.errors import ApiError, ErrorCode
 
 
@@ -53,10 +57,8 @@ ALLOWED_DATASET_REGISTRATION_KEYS: frozenset[str] = frozenset(
     {"datasetId", "rowCount", "declaredSchema"}
 )
 
-# The fixture dataset is pre-approved so existing tests require no changes.
-FIXTURE_APPROVED_DATASET_IDS: frozenset[str] = frozenset(
-    {"fixture:synthetic-tiny-v1"}
-)
+# The fixture dataset is pre-approved so practice path tests require no changes.
+FIXTURE_APPROVED_DATASET_IDS: frozenset[str] = frozenset({FIXTURE_DATASET_ID})
 
 
 class DatasetStatus(str, Enum):
@@ -121,13 +123,9 @@ def dataset_transition(
 
 
 def require_dataset_id(value: object) -> str:
-    """Validate a dataset id against the safe-identifier contract."""
+    """Validate a registrable dataset id (practice fixture or own:* product)."""
 
-    if not isinstance(value, str) or not DATASET_ID_RE.fullmatch(value):
-        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
-    if FORBIDDEN_STRING_RE.search(value):
-        raise ApiError(ErrorCode.VALIDATION_ERROR, 400)
-    return value
+    return require_training_dataset_id(value)
 
 
 def require_rejection_reason(value: object) -> RejectionReasonCode:
@@ -291,6 +289,7 @@ class DatasetStore:
     ) -> DatasetRecord:
         """Register a dataset with bounded synthetic validation metadata."""
 
+        require_dataset_id(dataset_id)
         with self._lock:
             existing = self._datasets.get(dataset_id)
             if existing is not None:
