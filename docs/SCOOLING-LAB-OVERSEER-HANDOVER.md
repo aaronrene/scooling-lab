@@ -242,7 +242,7 @@ Evidence: docs/reviews/2026-08-26-t6-artifact-storage-bv-pass.md
 | --- | --- |
 | Repo | `scooling-lab` |
 | Muse branch | `feat/docs-t7-landed-sync` — **5 commits ahead of Muse `main`** (`aa4b5c2e`), not merged |
-| Git branch | **`muse-mirror`** @ `c4eace1` — see the branch-hygiene warning below |
+| Git branch | **`feat/docs-governance-2026-09-02`** @ `27bfbef` — moved off `muse-mirror` this session |
 | GitHub `main` | `ecf22e1` (PR #10 merged) — **1 commit ahead of the git checkout** |
 | Lab URL | `https://lab.scool.ing/` — queue endpoint green per operator 2026-08-26. **Not re-verified 2026-09-02** |
 | Overseer Kit | **Installed and live** — re-verified 2026-09-02: `initialized: true`, `lock.kit_version: "0.1.0"`, `footprint_self_integrity.state: "ok"`. *(The old "NOT installed" line here predated the 2026-08-27 `ok init --migrate` and was stale.)* |
@@ -255,22 +255,25 @@ Evidence: docs/reviews/2026-08-26-t6-artifact-storage-bv-pass.md
 | Products | Scooling **T7 LANDED** 2026-09-02 ([#354](https://github.com/aaronrene/scooling/pull/354), BV r2+r3 pass). The "T7b BV r1 findings / fix round open" text elsewhere in this file is **superseded** |
 | Constellation | Scooling PRIMARY = row **42 SC-BRAIN-LIVE-1a** (theBRAIN auth seam). Lab is not blocked by Gabriel/MuseHub and does not block that chapter. theBRAIN **E4** depends on Lab GGUF export, downstream of **T8** |
 
-### Branch hygiene warning (2026-09-02)
+### Branch hygiene (2026-09-02 — partly fixed, one Tier-3 step remains)
 
-Two things are out of shape and should be settled before the next Auto row:
+Two problems were found this session:
 
-1. **Git is checked out on `muse-mirror`**, which is the *export* branch. Per SD-14 and
-   `.overseer/config.yaml`, work belongs on a Muse feature branch; `muse-mirror` exists only to
-   carry Muse → GitHub. Working there risks an inverted land.
-2. **The doc rename never left Muse.** `docs/SCOOLING-LAB-ROADMAP.md` and
-   `docs/SCOOLING-LAB-OVERSEER-HANDOVER.md` — the kit-configured living docs — are **untracked in
-   git**, while git HEAD still tracks the old `docs/ROADMAP.md` / `docs/OVERSEER-HANDOVER.md` as
-   deleted. The rename was committed in **Muse** on `feat/docs-t7-landed-sync` (`f9871af9`,
-   2026-08-27) and never merged to Muse `main` or mirrored. Until it lands, GitHub shows the old
-   names and this file does not exist there.
+1. **Git was checked out on `muse-mirror`**, the *export* branch. Per SD-14 that branch exists only
+   to carry Muse → GitHub; committing there risks an inverted land. **Fixed** — git now sits on
+   `feat/docs-governance-2026-09-02`.
+2. **The doc rename had never left Muse.** `docs/SCOOLING-LAB-ROADMAP.md` and
+   `docs/SCOOLING-LAB-OVERSEER-HANDOVER.md` — the kit-configured living docs — were **untracked in
+   git** while git HEAD still carried the old `docs/ROADMAP.md` / `docs/OVERSEER-HANDOVER.md`. The
+   rename was committed in **Muse** on `feat/docs-t7-landed-sync` (`f9871af9`, 2026-08-27) and never
+   merged or mirrored, so GitHub still shows the old names. **Partly fixed** — the rename is now on
+   the git feature branch above.
 
-Neither is data loss — the content is on disk and in Muse history. Both need an operator-authorized
-Muse `main` merge (Tier 3) followed by the normal bridge to `muse-mirror`.
+**Still open (Tier 3):** neither Muse `main` nor GitHub `main` has any of this. Landing needs an
+operator-authorized Muse `main` merge, then `muse-bridge-deploy` → `muse-mirror` → GitHub PR. Muse
+`feat/docs-t7-landed-sync` is **6 commits ahead** of Muse `main` and is the branch that must merge.
+
+No data was ever at risk — the content is on disk and in Muse history throughout.
 
 ### Governance gates checklist
 
