@@ -26,6 +26,13 @@ patterns = [
     "*.pem",
     "*.p12",
 
+    # Overseer Kit / Muse bridge clone-local runtime stamps — never snapshotted.
+    ".overseer/last_governance_sync",
+    ".overseer/.muse-bridge-sentinel",
+
+    # Local verification clone of the Knowtation staging tree — not Lab source.
+    "knowtation-staging-clone-verify/",
+
     "data/",
     "artifacts/",
     "models/",

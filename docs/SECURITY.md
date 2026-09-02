@@ -29,7 +29,7 @@ shell commands, callback URLs, local file paths, or Unsloth Studio/CLI component
 - Secret scanning runs in CI with gitleaks.
 - The BOM audit fails on non-allowlisted licenses and blocked AGPL source-path segments.
 
-## Finish-Line Work (see docs/ROADMAP.md)
+## Finish-Line Work (see docs/SCOOLING-LAB-ROADMAP.md)
 
 | Gap | Phase |
 | --- | --- |

@@ -1,9 +1,14 @@
 # Cross-Repo Status
 
+**Not to be confused with `docs/CROSS-REPO-COORDINATION.md`.** This file tracks **product wiring
+status** — which surfaces are connected and which phase connects them. That one is the **governance
+process** playbook (authority tiers, handover protocol, Standing Decisions).
+
 ## Simple Summary
 
 Scooling Lab owns the training API and worker runtime. Scooling, Knowtation, Muse Hub, and YouTube
-vault content connect through **queued finish phases** in `docs/ROADMAP.md` — nothing parked.
+vault content connect through **queued finish phases** in `docs/SCOOLING-LAB-ROADMAP.md` — nothing
+parked.
 
 **Status:** contract built (T0–T3); **not operational** until T9 (real train + packs + all surfaces).
 
@@ -41,4 +46,4 @@ One user flow works end-to-end on **each surface**:
 2. **Knowtation** — same flow on Knowtation vault (`own:know:*` ids).
 3. **YouTube** — include or exclude YouTube-ingested vault items in scope.
 
-See `docs/ROADMAP.md` build queue and STUB inventory for the complete plan.
+See `docs/SCOOLING-LAB-ROADMAP.md` build queue and STUB inventory for the complete plan.

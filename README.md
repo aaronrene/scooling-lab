@@ -9,19 +9,23 @@ contract, worker runtime, fixtures, tests, dependency inventory, and license not
 
 ## Current Phase
 
-**NEXT:** T4 — real Unsloth trainer runtime (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+**NEXT:** nothing builds in this repo right now — T7b's fix round happens in `~/scooling`. Next Lab
+phase is **T8** (GPU deploy + real train). See
+[`docs/SCOOLING-LAB-ROADMAP.md`](docs/SCOOLING-LAB-ROADMAP.md).
 
-T0–T3 contract work is done (127 tests). GPU worker is a **stub** until T4. Finish-line plan includes
-Muse Hub pack credits (T-CREDIT), legal closure (T-LEGAL), and Scooling / Knowtation / YouTube
-integration — no deferred phases.
+T0–T6 are built (161 tests: 160 run + 1 `@gpu` skip without CUDA). Real GPU train mode is a **stub**
+until T8, and T6 production durability is still open. Finish-line plan includes Muse Hub pack credits
+(T-CREDIT), legal closure (T-LEGAL), and Scooling / Knowtation / YouTube integration — no deferred
+phases.
 
-Session relay: [`docs/OVERSEER-HANDOVER.md`](docs/OVERSEER-HANDOVER.md) (Overseer handover). Cross-repo status:
+Session relay: [`docs/SCOOLING-LAB-OVERSEER-HANDOVER.md`](docs/SCOOLING-LAB-OVERSEER-HANDOVER.md)
+(Scooling Lab Overseer handover — this repo only; the Scooling app has its own). Cross-repo status:
 [`docs/CROSS-REPO-STATUS.md`](docs/CROSS-REPO-STATUS.md).
 
 ## Overseer Kit
 
-Governance via [Overseer Kit](https://github.com/aaronrene/overseer-kit) (`ok` CLI). Config:
-`.overseer/config.yaml`.
+Governance via [Overseer Kit](https://github.com/aaronrene/overseer-kit) (`ok` CLI), installed here
+2026-08-27 (v0.1.0). Config: `.overseer/config.yaml`.
 
 ```bash
 ~/OVERSEER_KIT/overseer-kit/cli/ok -C ~/scooling-lab status

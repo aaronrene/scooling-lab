@@ -1,7 +1,8 @@
 # Scooling Lab — agent instructions
 
-Apache-2.0 training workspace for Scooling. Read [`docs/OVERSEER-HANDOVER.md`](docs/OVERSEER-HANDOVER.md) and
-[`docs/ROADMAP.md`](docs/ROADMAP.md) first.
+Apache-2.0 training workspace for Scooling. Read
+[`docs/SCOOLING-LAB-OVERSEER-HANDOVER.md`](docs/SCOOLING-LAB-OVERSEER-HANDOVER.md) and
+[`docs/SCOOLING-LAB-ROADMAP.md`](docs/SCOOLING-LAB-ROADMAP.md) first.
 
 ## Version control
 
@@ -12,7 +13,7 @@ Apache-2.0 training workspace for Scooling. Read [`docs/OVERSEER-HANDOVER.md`](d
 | Muse commit on feature branch | Tier 1 — do it |
 | `git push` to feature branch | Tier 1 — backup/share |
 | Run tests before commit | Always |
-| Update `docs/ROADMAP.md` + `docs/OVERSEER-HANDOVER.md` together | SD-17 — session end |
+| Update `docs/SCOOLING-LAB-ROADMAP.md` + `docs/SCOOLING-LAB-OVERSEER-HANDOVER.md` together | SD-17 — session end |
 | Merge to Muse/`main` or GitHub `main` | Tier 3 — stop |
 
 ```bash

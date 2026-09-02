@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-26  
 **Phase:** T6 Auto — artifact object storage + durable job store  
-**Frozen authority:** `docs/ROADMAP.md` T6  
+**Frozen authority:** `docs/SCOOLING-LAB-ROADMAP.md` T6 (named `docs/ROADMAP.md` at review time)  
 **Verdict:** **`pass`**
 
 ## Deliverable checklist

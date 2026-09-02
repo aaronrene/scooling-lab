@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-26  
 **Phase:** T5 Auto — vault dataset package ingest  
-**Frozen authority:** `docs/ROADMAP.md` T5; `docs/T4-TRAINER-SPEC.md` §4  
+**Frozen authority:** `docs/SCOOLING-LAB-ROADMAP.md` T5 (named `docs/ROADMAP.md` at review time);
+`docs/T4-TRAINER-SPEC.md` §4  
 **Verdict:** **`pass`**
 
 ## Deliverable checklist

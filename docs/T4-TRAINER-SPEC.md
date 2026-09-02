@@ -6,7 +6,7 @@
 **Model (this artifact):** Thinking  
 **Owner repo:** scooling-lab  
 **Branch:** `feat/overseer-kit-governance`  
-**Authority:** `docs/ROADMAP.md` T4; `docs/OVERSEER-HANDOVER.md` NEXT
+**Authority:** `docs/SCOOLING-LAB-ROADMAP.md` T4; `docs/SCOOLING-LAB-OVERSEER-HANDOVER.md` NEXT
 
 Status: **Frozen Thinking spec.** No Unsloth install or GPU train in this artifact. T4b implements
 exactly this contract after freeze-review **`pass`**.

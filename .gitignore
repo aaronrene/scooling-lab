@@ -1,4 +1,7 @@
 __pycache__/
+.overseer/last_governance_sync
+.overseer/.muse-bridge-sentinel
+knowtation-staging-clone-verify/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/

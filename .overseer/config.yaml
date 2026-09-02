@@ -1,0 +1,34 @@
+overseer_config_version: 1
+repo:
+  name: scooling-lab
+  root_relative_docs: docs
+thresholds:
+  realign_max_commits: 50
+  drift_warn_only: true
+freeze_contract:
+  enabled: true
+  reviewer:
+    mode: agent
+    model: thinking-high
+    provider: local
+    fallback: human
+  human_escalation:
+  - security
+vcs:
+  regime: muse+git-mirror
+  canonical: muse
+  git:
+    remote: origin
+    main_branch: main
+    mirror_branch: muse-mirror
+    feature_branch_pattern: feat/{slug}
+  muse:
+    staging_remote: staging
+    main_branch: main
+docs:
+  handover: SCOOLING-LAB-OVERSEER-HANDOVER.md
+  roadmap: SCOOLING-LAB-ROADMAP.md
+  coordination: CROSS-REPO-COORDINATION.md
+  standing_decisions: CROSS-REPO-COORDINATION.md
+  handover_title: Scooling Lab Overseer Handover
+  roadmap_title: Scooling Lab Roadmap
